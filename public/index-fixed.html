@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FluxTranslate</title>
+    <link rel="stylesheet" href="/public/styles.css" />
+  </head>
+  <body>
+    <div class="bg-orb orb-a"></div>
+    <div class="bg-orb orb-b"></div>
+
+    <main class="shell">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">翻译工作台</p>
+          <h1>让表达无边界</h1>
+          <p class="lede">
+            当前版本已经切换到更稳定的翻译后端，同时保留语言互换、结果复制和本地历史记录。
+          </p>
+        </div>
+        <div class="hero-card">
+          <div class="hero-card-caption">实时概览</div>
+          <div class="metric">
+            <span id="sourceCount">0</span>
+            <label>输入字符</label>
+          </div>
+          <div class="metric">
+            <span id="targetCount">0</span>
+            <label>输出字符</label>
+          </div>
+          <div class="metric">
+            <span id="historyCount">0</span>
+            <label>历史记录</label>
+          </div>
+        </div>
+      </section>
+
+      <section class="translator">
+        <div class="panel input-panel">
+          <div class="panel-head">
+            <div>
+              <h2>原文</h2>
+              <p>输入要翻译的内容。</p>
+            </div>
+            <button id="clearBtn" class="ghost-btn" type="button">清空</button>
+          </div>
+
+          <div class="controls">
+            <label>
+              <span>源语言</span>
+              <select id="sourceLang"></select>
+            </label>
+
+            <button id="swapBtn" class="swap-btn" type="button" aria-label="交换语言">&harr;</button>
+
+            <label>
+              <span>目标语言</span>
+              <select id="targetLang"></select>
+            </label>
+          </div>
+
+          <textarea id="sourceText" placeholder="例如：明天我们一起去看展览吧。" rows="10"></textarea>
+
+          <div class="panel-actions">
+            <p class="hint">快捷键：`Ctrl + Enter` 立即翻译</p>
+            <button id="translateBtn" class="primary-btn" type="button">翻译</button>
+          </div>
+        </div>
+
+        <div class="panel output-panel">
+          <div class="panel-head">
+            <div>
+              <h2>译文</h2>
+              <p id="statusText">等待输入内容。</p>
+            </div>
+            <button id="copyBtn" class="ghost-btn" type="button">复制结果</button>
+          </div>
+
+          <div id="output" class="output" aria-live="polite">
+            <p class="placeholder">翻译结果会显示在这里。</p>
+          </div>
+
+          <div class="footer-strip">
+            <span id="detectedText">检测语言：-</span>
+            <span id="lastUpdated">最近更新：-</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="history panel">
+        <div class="panel-head">
+          <div>
+            <h2>最近翻译</h2>
+            <p>会保存在本地浏览器里，刷新后也还在。</p>
+          </div>
+          <button id="clearHistoryBtn" class="ghost-btn" type="button">清空历史</button>
+        </div>
+        <div id="historyList" class="history-list"></div>
+      </section>
+    </main>
+
+    <script src="/public/app-fixed.js"></script>
+  </body>
+</html>
