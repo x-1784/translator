@@ -1,6 +1,6 @@
 {
   "name": "xiaojian-translator",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
   "description": "小简翻译 - 简洁优雅的桌面翻译工具",
   "main": "electron-main.js",
