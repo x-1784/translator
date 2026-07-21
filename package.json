@@ -1,8 +1,8 @@
 {
-  "name": "translator-app",
+  "name": "xiaojian-translator",
   "version": "1.0.4",
   "private": true,
-  "description": "A sleek translation web app with a lightweight Node server.",
+  "description": "小简翻译 - 简洁优雅的桌面翻译工具",
   "main": "electron-main.js",
   "scripts": {
     "start": "electron .",
@@ -14,11 +14,12 @@
   "devDependencies": {
     "electron": "^43.1.1",
     "electron-builder": "^26.0.12",
-    "png-to-ico": "^3.0.2"
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.3"
   },
   "build": {
-    "appId": "com.fluxtranslate.desktop",
-    "productName": "FluxTranslate",
+    "appId": "com.xiaojian.translator",
+    "productName": "小简翻译",
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "asar": true,
     "electronDownload": {
@@ -54,7 +55,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "FluxTranslate",
+      "shortcutName": "小简翻译",
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "portable": {
@@ -62,6 +63,7 @@
     }
   },
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "tesseract.js": "^7.0.0"
   }
 }

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FluxTranslate</title>
+    <title>小简翻译</title>
     <link rel="stylesheet" href="/public/styles.css" />
   </head>
   <body>
@@ -11,8 +11,8 @@
       <!-- 侧边栏 -->
       <aside class="sidebar">
         <div class="sidebar-header">
-          <h1 class="sidebar-logo">FluxTranslate</h1>
-          <p class="sidebar-version">v1.0.0</p>
+          <h1 class="sidebar-logo">小简翻译</h1>
+          <p class="sidebar-version">v1.0.4</p>
         </div>
 
         <nav class="sidebar-nav">
@@ -30,11 +30,25 @@
             <span>历史记录</span>
           </button>
 
+          <button class="nav-item" data-page="document">
+            <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/>
+            </svg>
+            <span>文档翻译</span>
+          </button>
+
           <button class="nav-item" data-page="settings">
             <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
             </svg>
             <span>设置</span>
+          </button>
+
+          <button class="nav-item" data-page="stats">
+            <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/>
+            </svg>
+            <span>统计</span>
           </button>
 
           <button class="nav-item" data-page="about">
@@ -71,6 +85,11 @@
                   <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5zM15 11h2a1 1 0 110 2h-2v-2z"/>
                 </svg>
               </button>
+              <button id="speakBtn" class="toolbar-btn" type="button" title="朗读结果">
+                <svg width="18" height="18" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd"/>
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -95,7 +114,27 @@
                 </label>
               </div>
 
-              <textarea id="sourceText" placeholder="输入要翻译的文本..." rows="12"></textarea>
+              <div class="image-upload-section">
+                <input type="file" id="imageInput" accept="image/*" style="display: none;" />
+                <button id="uploadImageBtn" class="image-upload-btn" type="button" title="上传图片识别文字">
+                  <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"/>
+                  </svg>
+                  <span>上传图片</span>
+                </button>
+                <div id="imagePreview" class="image-preview" style="display: none;">
+                  <img id="previewImg" alt="预览" />
+                  <button id="removeImageBtn" class="remove-image-btn" type="button">✕</button>
+                  <div id="ocrProgress" class="ocr-progress" style="display: none;">
+                    <div class="progress-bar">
+                      <div class="progress-fill"></div>
+                    </div>
+                    <span class="progress-text">正在识别文字...</span>
+                  </div>
+                </div>
+              </div>
+
+              <textarea id="sourceText" placeholder="输入要翻译的文本，或上传/粘贴图片..." rows="12"></textarea>
             </div>
 
             <div class="panel output-panel">
@@ -150,10 +189,98 @@
                   <option value="">全部</option>
                   <option value="favorite">仅收藏</option>
                 </select>
+
+                <select id="filterTag" class="filter-select">
+                  <option value="">所有标签</option>
+                </select>
               </div>
             </div>
 
             <div id="historyList" class="history-list"></div>
+          </div>
+        </div>
+
+        <!-- 文档翻译页 -->
+        <div class="page" id="page-document">
+          <div class="toolbar">
+            <h2 class="page-title">文档翻译</h2>
+          </div>
+
+          <div class="document-upload-area">
+            <div class="upload-box" id="uploadBox">
+              <svg width="48" height="48" fill="currentColor" viewBox="0 0 20 20" style="opacity: 0.5;">
+                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+              </svg>
+              <p style="margin: 16px 0 8px; font-size: 16px;">拖拽文件到这里，或点击选择文件</p>
+              <p style="opacity: 0.6; font-size: 14px;">支持 TXT、PDF 格式，最大 10MB</p>
+              <input type="file" id="documentFile" accept=".txt,.pdf" style="display: none;" />
+            </div>
+
+            <div class="document-controls" style="margin-top: 24px; display: none;" id="documentControls">
+              <div style="display: flex; gap: 16px; align-items: center; margin-bottom: 16px;">
+                <div style="flex: 1;">
+                  <strong id="fileName" style="display: block; margin-bottom: 4px;"></strong>
+                  <span id="fileSize" style="opacity: 0.6; font-size: 14px;"></span>
+                </div>
+                <button id="removeFileBtn" class="secondary-btn" type="button">移除</button>
+              </div>
+
+              <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                <label class="lang-select" style="flex: 1;">
+                  <span>源语言</span>
+                  <select id="docSourceLang">
+                    <option value="auto">自动检测</option>
+                    <option value="zh-CN">中文</option>
+                    <option value="en">英语</option>
+                    <option value="ja">日语</option>
+                    <option value="ko">韩语</option>
+                    <option value="fr">法语</option>
+                    <option value="de">德语</option>
+                    <option value="es">西班牙语</option>
+                    <option value="ru">俄语</option>
+                  </select>
+                </label>
+
+                <label class="lang-select" style="flex: 1;">
+                  <span>目标语言</span>
+                  <select id="docTargetLang">
+                    <option value="en">英语</option>
+                    <option value="zh-CN">中文</option>
+                    <option value="ja">日语</option>
+                    <option value="ko">韩语</option>
+                    <option value="fr">法语</option>
+                    <option value="de">德语</option>
+                    <option value="es">西班牙语</option>
+                    <option value="ru">俄语</option>
+                  </select>
+                </label>
+              </div>
+
+              <button id="translateDocBtn" class="primary-btn" type="button" style="width: 100%;">
+                开始翻译
+              </button>
+
+              <div id="docProgress" style="display: none; margin-top: 16px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                  <span id="docProgressText">正在翻译...</span>
+                  <span id="docProgressPercent">0%</span>
+                </div>
+                <div style="width: 100%; height: 8px; background: #1e293b; border-radius: 4px; overflow: hidden;">
+                  <div id="docProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); transition: width 0.3s;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="docResult" style="display: none; margin-top: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h3>翻译结果</h3>
+              <div style="display: flex; gap: 8px;">
+                <button id="copyDocResultBtn" class="secondary-btn" type="button">复制</button>
+                <button id="downloadDocResultBtn" class="secondary-btn" type="button">下载</button>
+              </div>
+            </div>
+            <div id="docResultText" style="background: #1e293b; padding: 16px; border-radius: 8px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; line-height: 1.6;"></div>
           </div>
         </div>
 
@@ -214,6 +341,50 @@
             </section>
 
             <section class="settings-section">
+              <h3>专业术语库</h3>
+              <div class="settings-item">
+                <div class="settings-item-info">
+                  <strong>自定义术语管理</strong>
+                  <p>添加专业术语，确保翻译的准确性和一致性</p>
+                </div>
+                <button id="manageTermsBtn" class="secondary-btn" type="button">管理术语</button>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h3>功能设置</h3>
+              <div class="settings-item">
+                <div class="settings-item-info">
+                  <strong>剪贴板监听</strong>
+                  <p>自动检测剪贴板变化并翻译（需保持应用运行）</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="clipboardMonitor" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+
+              <div class="settings-item">
+                <div class="settings-item-info">
+                  <strong>快捷短语库</strong>
+                  <p>保存常用短语，快速插入和翻译</p>
+                </div>
+                <button id="managePhrases Btn" class="secondary-btn" type="button">管理短语</button>
+              </div>
+
+              <div class="settings-item">
+                <div class="settings-item-info">
+                  <strong>翻译朗读</strong>
+                  <p>翻译完成后自动朗读译文</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="autoSpeak" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </section>
+
+            <section class="settings-section">
               <h3>数据管理</h3>
               <div class="settings-item">
                 <div class="settings-item-info">
@@ -245,6 +416,51 @@
           </div>
         </div>
 
+        <!-- 统计页面 -->
+        <div class="page" id="page-stats">
+          <div class="toolbar">
+            <h2 class="page-title">翻译统计</h2>
+          </div>
+
+          <div style="max-width: 900px; margin: 0 auto; padding: 24px;">
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-icon">📊</div>
+                <div class="stat-value" id="totalTranslations">0</div>
+                <div class="stat-label">总翻译次数</div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-icon">⭐</div>
+                <div class="stat-value" id="totalFavorites">0</div>
+                <div class="stat-label">收藏数</div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-icon">🔤</div>
+                <div class="stat-value" id="totalCharacters">0</div>
+                <div class="stat-label">翻译字符数</div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-icon">🏷️</div>
+                <div class="stat-value" id="totalTags">0</div>
+                <div class="stat-label">使用标签数</div>
+              </div>
+            </div>
+
+            <div style="margin-top: 32px;">
+              <h3 style="margin-bottom: 16px;">语言对使用分布</h3>
+              <div id="langPairStats" style="background: #1e293b; padding: 20px; border-radius: 12px;"></div>
+            </div>
+
+            <div style="margin-top: 32px;">
+              <h3 style="margin-bottom: 16px;">最常用标签</h3>
+              <div id="tagStats" style="background: #1e293b; padding: 20px; border-radius: 12px;"></div>
+            </div>
+          </div>
+        </div>
+
         <!-- 关于页 -->
         <div class="page" id="page-about">
           <div class="toolbar">
@@ -258,14 +474,14 @@
                   <path fill-rule="evenodd" d="M7 2a1 1 0 011 1v1h3a1 1 0 110 2H9.578a18.87 18.87 0 01-1.724 4.78c.29.354.596.696.914 1.026a1 1 0 11-1.44 1.389c-.188-.196-.373-.396-.554-.6a19.098 19.098 0 01-3.107 3.567 1 1 0 01-1.334-1.490 17.087 17.087 0 003.13-3.733 18.992 18.992 0 01-1.487-2.494 1 1 0 111.79-.89c.234.47.489.928.764 1.372.417-.934.752-1.913.997-2.927H3a1 1 0 110-2h3V3a1 1 0 011-1zm6 6a1 1 0 01.894.553l2.991 5.982a.869.869 0 01.02.037l.99 1.98a1 1 0 11-1.79.895L15.383 16h-4.764l-.724 1.447a1 1 0 11-1.788-.894l.99-1.98.019-.038 2.99-5.982A1 1 0 0113 8zm-1.382 6h2.764L13 11.236 11.618 14z" clip-rule="evenodd"/>
                 </svg>
               </div>
-              <h3>FluxTranslate</h3>
-              <p class="about-version">版本 1.0.0</p>
+              <h3>小简翻译</h3>
+              <p class="about-version">版本 1.0.4</p>
             </div>
 
             <div class="about-content">
               <section class="about-section">
                 <h4>产品简介</h4>
-                <p>FluxTranslate 是一款简洁、高效的桌面翻译工具，支持多种语言互译，并提供本地历史记录管理功能。</p>
+                <p>小简翻译是一款简洁、高效的桌面翻译工具，支持多种语言互译、图片OCR识别翻译、文档翻译等功能，并提供本地历史记录管理。</p>
               </section>
 
               <section class="about-section">
@@ -290,6 +506,30 @@
           </div>
         </div>
       </main>
+    </div>
+
+    <!-- 术语管理弹窗 -->
+    <div id="termsModal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>专业术语库</h3>
+          <button id="closeTermsModal" class="icon-btn">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="margin-bottom: 20px;">
+            <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+              <input type="text" id="termSource" placeholder="源语言术语" style="flex: 1; padding: 10px; background: #1e293b; border: 1px solid #475569; border-radius: 6px; color: #e2e8f0;" />
+              <input type="text" id="termTarget" placeholder="目标语言译文" style="flex: 1; padding: 10px; background: #1e293b; border: 1px solid #475569; border-radius: 6px; color: #e2e8f0;" />
+              <button id="addTermBtn" class="primary-btn">添加</button>
+            </div>
+            <p style="font-size: 14px; opacity: 0.6;">翻译时会自动替换匹配的术语</p>
+          </div>
+
+          <div id="termsList" style="max-height: 400px; overflow-y: auto;">
+            <!-- 术语列表 -->
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="/public/app.js"></script>
