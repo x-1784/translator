@@ -455,10 +455,40 @@ async function checkForUpdates() {
 async function downloadUpdate() {
   const downloadBtn = document.getElementById("downloadUpdateBtn");
   downloadBtn.disabled = true;
-  downloadBtn.textContent = "下载中...";
+  downloadBtn.textContent = "准备下载...";
+
+  // 显示进度条
+  const progressContainer = document.getElementById("downloadProgress");
+  const progressBar = document.getElementById("progressBar");
+  const progressPercent = document.getElementById("progressPercent");
+  const progressText = document.getElementById("progressText");
+  const progressSpeed = document.getElementById("progressSpeed");
+
+  progressContainer.style.display = "block";
+  progressBar.style.width = "0%";
+  progressPercent.textContent = "0%";
+  progressText.textContent = "正在下载...";
+  progressSpeed.textContent = "";
+
+  // 监听下载进度
+  window.electronAPI.onDownloadProgress((progress) => {
+    const percent = Math.floor(progress.percent);
+    progressBar.style.width = percent + "%";
+    progressPercent.textContent = percent + "%";
+
+    // 格式化下载速度
+    const speed = (progress.bytesPerSecond / 1024 / 1024).toFixed(2);
+    const transferred = (progress.transferred / 1024 / 1024).toFixed(2);
+    const total = (progress.total / 1024 / 1024).toFixed(2);
+    progressSpeed.textContent = `${transferred}MB / ${total}MB  •  ${speed}MB/s`;
+  });
 
   try {
     const result = await window.electronAPI.downloadUpdate();
+
+    // 隐藏进度条
+    progressContainer.style.display = "none";
+
     if (result.success) {
       els.updateInfo.innerHTML = `
         <p>✅ 更新已下载完成</p>

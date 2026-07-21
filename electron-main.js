@@ -214,6 +214,19 @@ app.whenReady().then(async () => {
     ipcMain.handle("download-update", async () => {
       try {
         const autoUpdater = setupAutoUpdater();
+
+        // 监听下载进度
+        autoUpdater.on("download-progress", (progressObj) => {
+          if (mainWindow) {
+            mainWindow.webContents.send("download-progress", {
+              percent: progressObj.percent,
+              transferred: progressObj.transferred,
+              total: progressObj.total,
+              bytesPerSecond: progressObj.bytesPerSecond
+            });
+          }
+        });
+
         await autoUpdater.downloadUpdate();
         return { success: true };
       } catch (error) {
