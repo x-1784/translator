@@ -1,6 +1,6 @@
 {
   "name": "xiaojian-translator",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "description": "小简翻译 - 简洁优雅的桌面翻译工具",
   "main": "electron-main.js",
@@ -15,11 +15,12 @@
     "electron": "^43.1.1",
     "electron-builder": "^26.0.12",
     "png-to-ico": "^3.0.2",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "to-ico": "^1.1.5"
   },
   "build": {
     "appId": "com.xiaojian.translator",
-    "productName": "小简翻译",
+    "productName": "XiaoJian-Translator",
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "asar": true,
     "electronDownload": {

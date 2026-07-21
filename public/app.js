@@ -63,6 +63,16 @@ function init() {
   updateCounts();
   setStatus("准备就绪");
   applySettings();
+
+  // 加载当前版本号
+  if (window.electronAPI && window.electronAPI.getAppVersion) {
+    window.electronAPI.getAppVersion().then(version => {
+      const versionEl = document.getElementById('currentVersion');
+      if (versionEl) {
+        versionEl.textContent = `v${version}`;
+      }
+    });
+  }
 }
 
 function switchPage(pageId) {
@@ -455,6 +465,15 @@ function updateSettings() {
 }
 
 async function checkForUpdates() {
+  // 先获取并显示当前版本
+  if (window.electronAPI && window.electronAPI.getAppVersion) {
+    const version = await window.electronAPI.getAppVersion();
+    const versionEl = document.getElementById('currentVersion');
+    if (versionEl) {
+      versionEl.textContent = `v${version}`;
+    }
+  }
+
   els.checkUpdateBtn.disabled = true;
   els.checkUpdateBtn.textContent = "检查中...";
   els.updateInfo.style.display = "none";

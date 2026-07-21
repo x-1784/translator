@@ -171,6 +171,11 @@ app.whenReady().then(async () => {
     await createWindow();
 
     // 设置 IPC 监听器处理检查更新请求
+    // 获取应用版本
+    ipcMain.handle("get-app-version", () => {
+      return app.getVersion();
+    });
+
     ipcMain.handle("check-for-updates", async () => {
       try {
         const autoUpdater = setupAutoUpdater();
