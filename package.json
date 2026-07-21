@@ -1,6 +1,6 @@
 {
   "name": "translator-app",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "A sleek translation web app with a lightweight Node server.",
   "main": "electron-main.js",
