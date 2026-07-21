@@ -198,6 +198,19 @@ async function copyOutput() {
   try {
     await navigator.clipboard.writeText(text);
     setStatus("译文已复制到剪贴板", "success");
+
+    // 视觉反馈：按钮变绿并显示"已复制✓"
+    const originalContent = els.copyBtn.innerHTML;
+    els.copyBtn.innerHTML = "✓";
+    els.copyBtn.style.background = "#10b981";
+    els.copyBtn.style.transform = "scale(1.1)";
+
+    // 2秒后恢复原样
+    setTimeout(() => {
+      els.copyBtn.innerHTML = originalContent;
+      els.copyBtn.style.background = "";
+      els.copyBtn.style.transform = "";
+    }, 2000);
   } catch {
     setStatus("复制失败，请检查权限", "danger");
   }
