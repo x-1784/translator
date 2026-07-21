@@ -1,6 +1,6 @@
 {
   "name": "translator-app",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "A sleek translation web app with a lightweight Node server.",
   "main": "electron-main.js",
@@ -21,6 +21,9 @@
     "productName": "FluxTranslate",
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "asar": true,
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    },
     "directories": {
       "output": "dist",
       "buildResources": "assets"
