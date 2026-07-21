@@ -176,13 +176,19 @@ app.whenReady().then(async () => {
         const autoUpdater = setupAutoUpdater();
         const result = await autoUpdater.checkForUpdates();
 
+        console.log("Update check result:", result);
+
         if (!result || !result.updateInfo) {
+          console.log("No update info returned");
           return { success: true, isLatest: true, version: app.getVersion() };
         }
 
         const latestVersion = result.updateInfo.version;
         const currentVersion = app.getVersion();
 
+        console.log(`Current: ${currentVersion}, Latest: ${latestVersion}`);
+
+        // 版本比较：使用字符串比较可能不准确，但对于简单的版本号足够
         if (latestVersion === currentVersion) {
           return { success: true, isLatest: true, version: currentVersion };
         } else {
@@ -195,6 +201,7 @@ app.whenReady().then(async () => {
           };
         }
       } catch (error) {
+        console.error("Update check error:", error);
         // 如果是没有发布版本的错误，返回友好提示
         if (error.message && error.message.includes("No published versions")) {
           return { success: true, isLatest: true, version: app.getVersion() };
