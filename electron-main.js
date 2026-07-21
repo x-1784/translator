@@ -1,7 +1,6 @@
-const { app, BrowserWindow, Menu, Tray, nativeImage, dialog } = require("electron");
+const { app, BrowserWindow, Menu, Tray, nativeImage, dialog, ipcMain } = require("electron");
 const path = require("node:path");
 const { startServer } = require("./app-server");
-const { autoUpdater } = require("electron-updater");
 
 const APP_NAME = "FluxTranslate";
 const APP_ICON = path.join(__dirname, "assets", "icon.ico");
@@ -12,50 +11,22 @@ let serverHandle = null;
 let isQuitting = false;
 let hasShownTrayHint = false;
 
-autoUpdater.autoDownload = false;
-autoUpdater.autoInstallOnAppQuit = true;
-
-autoUpdater.on("update-available", (info) => {
-  dialog
-    .showMessageBox({
-      type: "info",
-      title: "发现新版本",
-      message: `FluxTranslate ${info.version} 已发布，是否立即下载？`,
-      buttons: ["下载更新", "稍后再说"],
-      defaultId: 0,
-      cancelId: 1,
-    })
-    .then(({ response }) => {
-      if (response === 0) {
-        autoUpdater.downloadUpdate();
-      }
-    });
-});
-
-autoUpdater.on("update-downloaded", () => {
-  dialog
-    .showMessageBox({
-      type: "info",
-      title: "更新已就绪",
-      message: "新版本已下载完成，重启应用后生效。是否立即重启？",
-      buttons: ["立即重启", "稍后重启"],
-      defaultId: 0,
-      cancelId: 1,
-    })
-    .then(({ response }) => {
-      if (response === 0) {
-        isQuitting = true;
-        autoUpdater.quitAndInstall();
-      }
-    });
-});
-
-autoUpdater.on("error", (err) => {
-  dialog.showErrorBox("更新检查失败", err.message || String(err));
-});
-
 function getIconPath() {
   return APP_ICON;
+}
+
+function setupAutoUpdater() {
+  const { autoUpdater } = require("electron-updater");
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  // 移除所有弹窗，只返回检查结果
+  autoUpdater.on("error", (err) => {
+    console.error("Update error:", err);
+  });
+
+  return autoUpdater;
 }
 
 async function ensureServer() {
@@ -161,6 +132,7 @@ async function createWindow() {
       contextIsolation: true,
       sandbox: true,
       devTools: true,
+      preload: path.join(__dirname, "preload.js"),
     },
   });
 
@@ -169,17 +141,11 @@ async function createWindow() {
   });
 
   mainWindow.on("minimize", (event) => {
-    event.preventDefault();
-    hideWindowToTray();
+    // 直接最小化，不拦截
   });
 
   mainWindow.on("close", (event) => {
-    if (isQuitting) {
-      return;
-    }
-
-    event.preventDefault();
-    hideWindowToTray();
+    // 直接退出，不再最小化到托盘
   });
 
   mainWindow.on("closed", () => {
@@ -203,15 +169,61 @@ app.setAppUserModelId("com.fluxtranslate.desktop");
 app.whenReady().then(async () => {
   try {
     await createWindow();
+
+    // 设置 IPC 监听器处理检查更新请求
+    ipcMain.handle("check-for-updates", async () => {
+      try {
+        const autoUpdater = setupAutoUpdater();
+        const result = await autoUpdater.checkForUpdates();
+
+        if (!result || !result.updateInfo) {
+          return { success: true, isLatest: true, version: app.getVersion() };
+        }
+
+        const latestVersion = result.updateInfo.version;
+        const currentVersion = app.getVersion();
+
+        if (latestVersion === currentVersion) {
+          return { success: true, isLatest: true, version: currentVersion };
+        } else {
+          return {
+            success: true,
+            isLatest: false,
+            currentVersion,
+            latestVersion,
+            releaseNotes: result.updateInfo.releaseNotes
+          };
+        }
+      } catch (error) {
+        // 如果是没有发布版本的错误，返回友好提示
+        if (error.message && error.message.includes("No published versions")) {
+          return { success: true, isLatest: true, version: app.getVersion() };
+        }
+        return { success: false, message: error.message || "检查更新失败" };
+      }
+    });
+
+    // 处理下载更新请求
+    ipcMain.handle("download-update", async () => {
+      try {
+        const autoUpdater = setupAutoUpdater();
+        await autoUpdater.downloadUpdate();
+        return { success: true };
+      } catch (error) {
+        return { success: false, message: error.message };
+      }
+    });
+
+    // 处理安装更新请求
+    ipcMain.handle("install-update", () => {
+      isQuitting = true;
+      const autoUpdater = setupAutoUpdater();
+      autoUpdater.quitAndInstall();
+    });
   } catch (error) {
     console.error("Failed to launch desktop app:", error);
     app.quit();
   }
-
-  // 启动后延迟 3 秒静默检查更新，避免影响启动速度
-  setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(() => {});
-  }, 3000);
 
   app.on("activate", async () => {
     if (BrowserWindow.getAllWindows().length === 0) {

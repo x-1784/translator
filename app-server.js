@@ -132,7 +132,7 @@ function createServer() {
     const requestUrl = new URL(req.url, `http://${req.headers.host}`);
 
     if (req.method === "GET" && requestUrl.pathname === "/") {
-      serveFile(res, path.join(PUBLIC_DIR, "index-fixed.html"));
+      serveFile(res, path.join(PUBLIC_DIR, "index.html"));
       return;
     }
 
