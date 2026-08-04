@@ -38,7 +38,7 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.6;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 .app-container {
@@ -154,7 +154,7 @@ body {
   display: none;
   flex-direction: column;
   height: 100%;
-  overflow: hidden;
+  overflow-y: auto;
   animation: fadeIn 0.3s ease;
 }
 
@@ -208,6 +208,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: flex-start;
+  min-height: 0;
 }
 
 .translator {
@@ -620,6 +621,7 @@ body {
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+  padding: 0 32px;
 }
 
 .search-bar {
@@ -627,7 +629,7 @@ body {
   background: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  padding: 24px;
+  padding: 28px;
   box-shadow: var(--shadow-md);
 }
 
@@ -641,7 +643,7 @@ body {
   font-size: 15px;
   font-weight: 500;
   transition: all 0.2s;
-  margin-bottom: 20px;
+  margin-bottom: 28px;
 }
 
 .search-input:focus {
@@ -659,7 +661,11 @@ body {
 .filter-group {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
+  gap: 12px;
+}
+
+.history-filters {
+  margin-bottom: 28px;
 }
 
 .filter-select {
