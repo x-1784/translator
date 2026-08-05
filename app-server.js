@@ -1,10 +1,13 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 const TRANSLATION_TIMEOUT_MS = Number(process.env.TRANSLATION_TIMEOUT_MS || 8000);
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
+const CACHE_DIR = process.env.TRANSLATION_CACHE_DIR || path.join(ROOT, ".cache");
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -15,6 +18,19 @@ const MIME_TYPES = {
   ".png": "image/png",
   ".ico": "image/x-icon",
 };
+
+const ENGINES = {
+  mymemory: { label: "MyMemory", handler: translateViaMyMemory },
+  google: { label: "Google Translate", handler: translateViaGoogleFree },
+};
+
+const ENGINE_ORDER = ["mymemory", "google"];
+
+try {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+} catch (error) {
+  console.warn("Unable to create cache directory:", error.message);
+}
 
 function sendJson(res, statusCode, body, headers = {}) {
   res.writeHead(statusCode, {
@@ -51,6 +67,70 @@ function guessSourceLanguage(text) {
   if (/[\u0400-\u04ff]/u.test(text)) return "ru";
   if (/[\u0e00-\u0e7f]/u.test(text)) return "th";
   return "en";
+}
+
+function getCacheKey(text, source, target) {
+  return crypto.createHash("md5").update(`${text}|${source}|${target}`).digest("hex");
+}
+
+function getCacheFilePath(key) {
+  return path.join(CACHE_DIR, `${key}.json`);
+}
+
+function getCache(text, source, target) {
+  try {
+    const filePath = getCacheFilePath(getCacheKey(text, source, target));
+    if (!fs.existsSync(filePath)) return null;
+
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (!raw || typeof raw !== "object") return null;
+
+    if (Date.now() - Number(raw.cachedAt || 0) > CACHE_TTL_MS) {
+      fs.unlinkSync(filePath);
+      return null;
+    }
+
+    return raw.payload || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function setCache(text, source, target, payload) {
+  try {
+    const filePath = getCacheFilePath(getCacheKey(text, source, target));
+    fs.writeFileSync(filePath, JSON.stringify({ cachedAt: Date.now(), payload }), "utf8");
+  } catch (error) {
+    console.warn("Unable to write cache entry:", error.message);
+  }
+}
+
+function cleanOldCache() {
+  try {
+    const entries = fs.readdirSync(CACHE_DIR);
+    const now = Date.now();
+    let removed = 0;
+
+    for (const entry of entries) {
+      if (!entry.endsWith(".json")) continue;
+      const filePath = path.join(CACHE_DIR, entry);
+      try {
+        const stat = fs.statSync(filePath);
+        if (now - stat.mtimeMs > CACHE_TTL_MS) {
+          fs.unlinkSync(filePath);
+          removed += 1;
+        }
+      } catch (error) {
+        // ignore individual entry failures
+      }
+    }
+
+    if (removed > 0) {
+      console.log(`Cache cleanup removed ${removed} stale entries`);
+    }
+  } catch (error) {
+    // cache directory may not exist yet
+  }
 }
 
 function formatFetchError(error) {
@@ -119,12 +199,71 @@ async function translateViaMyMemory({ text, source, target }) {
   };
 }
 
-async function translateText({ text, source, target }) {
-  try {
-    return await translateViaMyMemory({ text, source, target });
-  } catch (error) {
-    throw new Error(`Translation service unavailable: ${formatFetchError(error)}`);
+async function translateViaGoogleFree({ text, source, target }) {
+  const query = new URL("https://translate.googleapis.com/translate_a/single");
+  query.searchParams.set("client", "gtx");
+  query.searchParams.set("sl", source === "auto" ? "auto" : source);
+  query.searchParams.set("tl", target);
+  query.searchParams.set("dt", "t");
+  query.searchParams.set("q", text);
+
+  const response = await fetch(query, {
+    signal: AbortSignal.timeout(TRANSLATION_TIMEOUT_MS),
+    headers: { "User-Agent": "Mozilla/5.0" },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
   }
+
+  const body = await response.json();
+  if (!Array.isArray(body) || !Array.isArray(body[0])) {
+    throw new Error("Unexpected response shape");
+  }
+
+  const translatedText = body[0]
+    .map((item) => (Array.isArray(item) && typeof item[0] === "string" ? item[0] : ""))
+    .join("")
+    .trim();
+
+  if (!translatedText) {
+    throw new Error("No translation was returned");
+  }
+
+  const detectedSource =
+    typeof body[2] === "string" && body[2] ? body[2] : source === "auto" ? guessSourceLanguage(text) : source;
+
+  return {
+    translatedText,
+    detectedSource,
+    provider: "Google Translate",
+  };
+}
+
+async function translateText({ text, source, target }) {
+  const cached = getCache(text, source, target);
+  if (cached) {
+    return { ...cached, fromCache: true };
+  }
+
+  const failures = [];
+
+  for (const engineKey of ENGINE_ORDER) {
+    const engine = ENGINES[engineKey];
+    if (!engine) continue;
+
+    try {
+      const result = await engine.handler({ text, source, target });
+      setCache(text, source, target, result);
+      return { ...result, fromCache: false };
+    } catch (error) {
+      const detail = formatFetchError(error);
+      failures.push(`${engine.label}: ${detail}`);
+      console.warn(`Engine ${engine.label} failed, trying next: ${detail}`);
+    }
+  }
+
+  throw new Error(`Translation service unavailable: ${failures.join(" ; ")}`);
 }
 
 function createServer() {
@@ -144,7 +283,7 @@ function createServer() {
     }
 
     if (req.method === "GET" && requestUrl.pathname === "/health") {
-      sendJson(res, 200, { ok: true, provider: "MyMemory" });
+      sendJson(res, 200, { ok: true, provider: "MyMemory", engines: ENGINE_ORDER });
       return;
     }
 
@@ -194,6 +333,7 @@ function createServer() {
 
 function startServer(preferredPort = 3000) {
   const server = createServer();
+  cleanOldCache();
 
   return new Promise((resolve, reject) => {
     const listen = (port) => {

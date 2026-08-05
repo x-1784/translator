@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+﻿const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
@@ -6,4 +6,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   downloadUpdate: () => ipcRenderer.invoke("download-update"),
   installUpdate: () => ipcRenderer.invoke("install-update"),
   onDownloadProgress: (callback) => ipcRenderer.on("download-progress", (event, progress) => callback(progress)),
+  
+  // 截图相关
+  screenshotComplete: (region) => ipcRenderer.invoke("screenshot-complete", region),
+  screenshotCancel: () => ipcRenderer.invoke("screenshot-cancel"),
+  onScreenshotCaptured: (callback) => ipcRenderer.on("screenshot-captured", (event, dataUrl) => callback(dataUrl)),
+  getScreenshotShortcut: () => ipcRenderer.invoke("get-screenshot-shortcut"),
+  triggerScreenshot: () => ipcRenderer.invoke("trigger-screenshot"),
 });

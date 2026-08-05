@@ -1,4 +1,4 @@
-const LANGUAGES = [
+﻿const LANGUAGES = [
   ["auto", "自动检测"],
   ["zh-CN", "中文"],
   ["en", "English"],
@@ -49,16 +49,75 @@ const els = {
   importHistoryBtn: document.getElementById("importHistoryBtn"),
   importHistoryInput: document.getElementById("importHistoryInput"),
   clearAllDataBtn: document.getElementById("clearAllDataBtn"),
+  themeToggle: document.getElementById("themeToggle"),
+  screenshotBtn: document.getElementById("screenshotBtn"),
+  screenshotShortcutLabel: document.getElementById("screenshotShortcutLabel"),
 };
 
 const languageNames = Object.fromEntries(LANGUAGES);
 let history = loadHistory();
 let settings = loadSettings();
 
+async function handleScreenshotCaptured(dataUrl) {
+  try {
+    // 切换到首页
+    switchPage("home");
+    
+    // 显示加载状态
+    setStatus("正在识别图片文字...", "loading");
+    
+    // 使用 tesseract.js 进行 OCR
+    const { createWorker } = window.Tesseract || {};
+    
+    if (!createWorker) {
+      setStatus("OCR 功能未加载，请刷新页面重试", "error");
+      return;
+    }
+
+    const worker = await createWorker("eng+chi_sim");
+    const { data: { text } } = await worker.recognize(dataUrl);
+    await worker.terminate();
+
+    if (!text || !text.trim()) {
+      setStatus("未识别到文字", "error");
+      return;
+    }
+
+    // 将识别的文字填入输入框
+    els.sourceText.value = text.trim();
+    updateCounts();
+    
+    // 自动翻译
+    setStatus("文字识别成功，正在翻译...", "loading");
+    await translate();
+    
+  } catch (error) {
+    console.error("Screenshot OCR error:", error);
+    setStatus("图片识别失败: " + error.message, "error");
+  }
+}
+
 function init() {
   populateLanguageSelects();
   restoreState();
   wireEvents();
+
+  // 显示实际生效的截图快捷键
+  if (window.electronAPI && window.electronAPI.getScreenshotShortcut) {
+    window.electronAPI.getScreenshotShortcut().then((accelerator) => {
+      if (!els.screenshotShortcutLabel) return;
+      els.screenshotShortcutLabel.textContent = accelerator
+        ? accelerator.replace("CommandOrControl", "Ctrl")
+        : "未注册（快捷键被占用）";
+    });
+  }
+
+  // 监听截图捕获
+  if (window.electronAPI && window.electronAPI.onScreenshotCaptured) {
+    window.electronAPI.onScreenshotCaptured((dataUrl) => {
+      handleScreenshotCaptured(dataUrl);
+    });
+  }
   renderHistory();
   updateCounts();
   setStatus("准备就绪");
@@ -163,7 +222,8 @@ async function translate() {
     }
 
     setOutput(finalText, { detectedSource: payload.detectedSource });
-    setStatus(`翻译完成 (${payload.provider || "默认服务"})`, "success");
+    const cacheTag = payload.fromCache ? " · 缓存" : "";
+    setStatus(`翻译完成 (${payload.provider || "默认服务"}${cacheTag})`, "success");
 
     // 自动朗读
     if (autoSpeakEnabled && finalText) {
@@ -454,6 +514,14 @@ function applySettings() {
   if (settings.defaultTargetLang) {
     els.targetLang.value = settings.defaultTargetLang;
   }
+  
+  // 应用主题设置
+  if (settings.theme) {
+    document.documentElement.setAttribute("data-theme", settings.theme);
+    if (els.themeToggle) {
+      els.themeToggle.checked = settings.theme === "light";
+    }
+  }
 }
 
 function updateSettings() {
@@ -462,6 +530,15 @@ function updateSettings() {
   saveSettings();
   applySettings();
   setStatus("设置已保存", "success");
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute("data-theme") || "dark";
+  const newTheme = currentTheme === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", newTheme);
+  settings.theme = newTheme;
+  saveSettings();
+  setStatus(`已切换到${newTheme === "light" ? "浅色" : "深色"}模式`, "success");
 }
 
 async function checkForUpdates() {
@@ -732,6 +809,18 @@ function humanLanguage(code) {
 }
 
 function wireEvents() {
+  // 添加键盘快捷键
+  document.addEventListener("keydown", (e) => {
+    // Ctrl+Enter 翻译
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      const activePage = document.querySelector(".page.active");
+      if (activePage && activePage.id === "page-home") {
+        e.preventDefault();
+        translate();
+      }
+    }
+  });
+
   els.navItems.forEach((item) => {
     item.addEventListener("click", () => {
       switchPage(item.dataset.page);
@@ -761,12 +850,6 @@ function wireEvents() {
   els.sourceLang.addEventListener("change", persistState);
   els.targetLang.addEventListener("change", persistState);
 
-  document.addEventListener("keydown", (event) => {
-    if (event.ctrlKey && event.key === "Enter") {
-      translate();
-    }
-  });
-
   els.clearHistoryBtn.addEventListener("click", clearHistory);
 
   // 历史记录搜索和筛选
@@ -788,6 +871,18 @@ function wireEvents() {
   }
 
   els.checkUpdateBtn.addEventListener("click", checkForUpdates);
+  if (els.themeToggle) {
+    els.themeToggle.addEventListener("change", toggleTheme);
+  }
+  if (els.screenshotBtn) {
+    els.screenshotBtn.addEventListener("click", () => {
+      if (window.electronAPI && window.electronAPI.triggerScreenshot) {
+        window.electronAPI.triggerScreenshot();
+      } else {
+        setStatus("截图翻译仅在桌面版可用", "danger");
+      }
+    });
+  }
   els.defaultSourceLang.addEventListener("change", updateSettings);
   els.defaultTargetLang.addEventListener("change", updateSettings);
   els.exportHistoryBtn.addEventListener("click", exportHistory);

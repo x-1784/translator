@@ -1,4 +1,4 @@
-/* ==================== 企业级现代化设计 ==================== */
+﻿/* ==================== 企业级现代化设计 ==================== */
 
 /* 配色方案 */
 :root {
@@ -1549,4 +1549,75 @@ select:focus {
 /* ==================== 平滑滚动 ==================== */
 html {
   scroll-behavior: smooth;
+}
+
+/* ==================== 浅色主题 ==================== */
+[data-theme="light"] {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-card: #f1f5f9;
+  
+  --accent-primary: #6366f1;
+  --accent-secondary: #8b5cf6;
+  --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  
+  --border-color: rgba(15, 23, 42, 0.1);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* 浅色主题特殊调整 */
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border: 1px solid #e2e8f0;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+[data-theme="light"] ::selection {
+  background: rgba(99, 102, 241, 0.2);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .panel:hover {
+  box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .image-preview {
+  background: #f8fafc;
+}
+
+[data-theme="light"] .remove-image-btn {
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f172a;
+}
+
+[data-theme="light"] .remove-image-btn:hover {
+  background: #ef4444;
+  color: white;
+}
+
+[data-theme="light"] .ocr-progress {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+[data-theme="light"] .progress-bar {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .progress-text {
+  color: #0f172a;
 }

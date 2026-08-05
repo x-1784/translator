@@ -1,8 +1,13 @@
-const { app, BrowserWindow, Menu, Tray, nativeImage, dialog, ipcMain } = require("electron");
+﻿const { app, BrowserWindow, Menu, Tray, nativeImage, dialog, ipcMain } = require("electron");
+const { globalShortcut, desktopCapturer, screen } = require("electron");
 const path = require("node:path");
+// 缓存写入 userData，避免打包后 asar 只读导致失败
+process.env.TRANSLATION_CACHE_DIR =
+  process.env.TRANSLATION_CACHE_DIR || path.join(app.getPath("userData"), "translation-cache");
+
 const { startServer } = require("./app-server");
 
-const APP_NAME = "FluxTranslate";
+const APP_NAME = "小简翻译";
 const APP_ICON = path.join(__dirname, "assets", "icon.ico");
 
 let mainWindow = null;
@@ -114,6 +119,162 @@ function createTray() {
   return tray;
 }
 
+// ==================== 截图翻译功能 ====================
+let screenshotWindow = null;
+let lastScreenshotImage = null;
+
+async function captureScreenshot() {
+  try {
+    // 隐藏主窗口
+    if (mainWindow && mainWindow.isVisible()) {
+      mainWindow.hide();
+    }
+
+    // 等待窗口隐藏
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // 获取屏幕源
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: screen.getPrimaryDisplay().workAreaSize
+    });
+
+    if (sources.length === 0) {
+      throw new Error('无法获取屏幕截图');
+    }
+
+    // 创建截图选择窗口
+    const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+    
+    screenshotWindow = new BrowserWindow({
+      width,
+      height,
+      x: 0,
+      y: 0,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      fullscreen: true,
+      webPreferences: {
+        contextIsolation: true,
+        sandbox: true,
+        preload: path.join(__dirname, "preload.js"),
+      },
+    });
+
+    // 缓存原始截图，供裁剪时复用（避免二次截屏把主窗口拍进去）
+    lastScreenshotImage = sources[0].thumbnail;
+    const screenshot = lastScreenshotImage.toDataURL();
+    
+    await screenshotWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            cursor: crosshair; 
+            overflow: hidden;
+            position: relative;
+          }
+          #screenshot {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            user-select: none;
+          }
+          #selection {
+            position: absolute;
+            border: 2px solid #6366f1;
+            background: rgba(99, 102, 241, 0.1);
+            display: none;
+          }
+          #hint {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-family: sans-serif;
+            font-size: 14px;
+            z-index: 1000;
+          }
+        </style>
+      </head>
+      <body>
+        <div id="hint">按住鼠标拖动选择区域，ESC 取消</div>
+        <img id="screenshot" src="${screenshot}" />
+        <div id="selection"></div>
+        <script>
+          const img = document.getElementById('screenshot');
+          const selection = document.getElementById('selection');
+          const hint = document.getElementById('hint');
+          let startX, startY, isSelecting = false;
+
+          setTimeout(() => hint.style.display = 'none', 3000);
+
+          document.addEventListener('mousedown', (e) => {
+            isSelecting = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            selection.style.left = startX + 'px';
+            selection.style.top = startY + 'px';
+            selection.style.width = '0px';
+            selection.style.height = '0px';
+            selection.style.display = 'block';
+          });
+
+          document.addEventListener('mousemove', (e) => {
+            if (!isSelecting) return;
+            const width = e.clientX - startX;
+            const height = e.clientY - startY;
+            selection.style.width = Math.abs(width) + 'px';
+            selection.style.height = Math.abs(height) + 'px';
+            selection.style.left = (width < 0 ? e.clientX : startX) + 'px';
+            selection.style.top = (height < 0 ? e.clientY : startY) + 'px';
+          });
+
+          document.addEventListener('mouseup', (e) => {
+            if (!isSelecting) return;
+            isSelecting = false;
+            
+            const endX = e.clientX;
+            const endY = e.clientY;
+            const x = Math.min(startX, endX);
+            const y = Math.min(startY, endY);
+            const width = Math.abs(endX - startX);
+            const height = Math.abs(endY - startY);
+
+            if (width > 10 && height > 10) {
+              window.electronAPI.screenshotComplete({ x, y, width, height });
+            }
+          });
+
+          document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+              window.electronAPI.screenshotCancel();
+            }
+          });
+        </script>
+      </body>
+      </html>
+    `)}`);
+
+  } catch (error) {
+    console.error('Screenshot error:', error);
+    if (mainWindow) {
+      mainWindow.show();
+    }
+    dialog.showErrorBox('截图失败', error.message);
+  }
+}
+
 async function createWindow() {
   const activeServer = await ensureServer();
   createTray();
@@ -164,87 +325,189 @@ if (!singleInstance) {
   });
 }
 
-app.setAppUserModelId("com.fluxtranslate.desktop");
+app.setAppUserModelId("com.xiaojian.translator");
+
+const SHORTCUT_CANDIDATES = [
+  "CommandOrControl+Shift+A",
+  "CommandOrControl+Alt+A",
+  "CommandOrControl+Shift+T",
+  "CommandOrControl+Alt+T",
+];
+
+let activeShortcut = null;
+
+function registerScreenshotShortcut() {
+  for (const accelerator of SHORTCUT_CANDIDATES) {
+    if (globalShortcut.isRegistered(accelerator)) {
+      continue;
+    }
+
+    const ok = globalShortcut.register(accelerator, () => {
+      captureScreenshot();
+    });
+
+    if (ok) {
+      activeShortcut = accelerator;
+      console.log("Global shortcut registered:", accelerator);
+      return accelerator;
+    }
+  }
+
+  activeShortcut = null;
+  console.warn("All screenshot shortcut candidates are taken; use the in-app button instead.");
+  return null;
+}
+
+function registerIpcHandlers() {
+  // 设置 IPC 监听器处理检查更新请求
+  // 获取应用版本
+  ipcMain.handle("get-app-version", () => {
+    return app.getVersion();
+  });
+
+  ipcMain.handle("check-for-updates", async () => {
+    try {
+      const autoUpdater = setupAutoUpdater();
+      const result = await autoUpdater.checkForUpdates();
+
+      console.log("Update check result:", result);
+
+      if (!result || !result.updateInfo) {
+        console.log("No update info returned");
+        return { success: true, isLatest: true, version: app.getVersion() };
+      }
+
+      const latestVersion = result.updateInfo.version;
+      const currentVersion = app.getVersion();
+
+      console.log(`Current: ${currentVersion}, Latest: ${latestVersion}`);
+
+      // 版本比较：使用字符串比较可能不准确，但对于简单的版本号足够
+      if (latestVersion === currentVersion) {
+        return { success: true, isLatest: true, version: currentVersion };
+      } else {
+        return {
+          success: true,
+          isLatest: false,
+          currentVersion,
+          latestVersion,
+          releaseNotes: result.updateInfo.releaseNotes
+        };
+      }
+    } catch (error) {
+      console.error("Update check error:", error);
+      // 如果是没有发布版本的错误，返回友好提示
+      if (error.message && error.message.includes("No published versions")) {
+        return { success: true, isLatest: true, version: app.getVersion() };
+      }
+      return { success: false, message: error.message || "检查更新失败" };
+    }
+  });
+
+  // 处理下载更新请求
+  ipcMain.handle("download-update", async () => {
+    try {
+      const autoUpdater = setupAutoUpdater();
+
+      // 监听下载进度
+      autoUpdater.on("download-progress", (progressObj) => {
+        if (mainWindow) {
+          mainWindow.webContents.send("download-progress", {
+            percent: progressObj.percent,
+            transferred: progressObj.transferred,
+            total: progressObj.total,
+            bytesPerSecond: progressObj.bytesPerSecond
+          });
+        }
+      });
+
+      await autoUpdater.downloadUpdate();
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  });
+
+  // 处理安装更新请求
+  ipcMain.handle("install-update", () => {
+    isQuitting = true;
+    const autoUpdater = setupAutoUpdater();
+    autoUpdater.quitAndInstall();
+  });
+
+  // 处理截图完成
+  ipcMain.handle("screenshot-complete", async (event, region) => {
+    if (screenshotWindow) {
+      screenshotWindow.close();
+      screenshotWindow = null;
+    }
+
+    try {
+      if (!lastScreenshotImage) {
+        throw new Error("没有可用的截图数据");
+      }
+
+      // 从缓存的原始截图裁剪，避免再次截屏拍到主窗口
+      const size = lastScreenshotImage.getSize();
+      const cropRegion = {
+        x: Math.max(0, Math.round(region.x)),
+        y: Math.max(0, Math.round(region.y)),
+        width: Math.round(region.width),
+        height: Math.round(region.height),
+      };
+      cropRegion.width = Math.min(cropRegion.width, size.width - cropRegion.x);
+      cropRegion.height = Math.min(cropRegion.height, size.height - cropRegion.y);
+
+      if (cropRegion.width < 1 || cropRegion.height < 1) {
+        throw new Error("选区太小");
+      }
+
+      const dataUrl = lastScreenshotImage.crop(cropRegion).toDataURL();
+      lastScreenshotImage = null;
+
+      if (mainWindow) {
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindow.webContents.send("screenshot-captured", dataUrl);
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error("Crop error:", error);
+      lastScreenshotImage = null;
+      if (mainWindow) {
+        mainWindow.show();
+      }
+      return { success: false, message: error.message };
+    }
+  });
+
+  // 处理截图取消
+  ipcMain.handle("screenshot-cancel", () => {
+    lastScreenshotImage = null;
+    if (screenshotWindow) {
+      screenshotWindow.close();
+      screenshotWindow = null;
+    }
+    if (mainWindow) {
+      mainWindow.show();
+    }
+  });
+  ipcMain.handle("get-screenshot-shortcut", () => activeShortcut);
+
+  ipcMain.handle("trigger-screenshot", () => {
+    captureScreenshot();
+    return { success: true };
+  });
+}
 
 app.whenReady().then(async () => {
   try {
+    registerIpcHandlers();
     await createWindow();
 
-    // 设置 IPC 监听器处理检查更新请求
-    // 获取应用版本
-    ipcMain.handle("get-app-version", () => {
-      return app.getVersion();
-    });
+    registerScreenshotShortcut();
 
-    ipcMain.handle("check-for-updates", async () => {
-      try {
-        const autoUpdater = setupAutoUpdater();
-        const result = await autoUpdater.checkForUpdates();
-
-        console.log("Update check result:", result);
-
-        if (!result || !result.updateInfo) {
-          console.log("No update info returned");
-          return { success: true, isLatest: true, version: app.getVersion() };
-        }
-
-        const latestVersion = result.updateInfo.version;
-        const currentVersion = app.getVersion();
-
-        console.log(`Current: ${currentVersion}, Latest: ${latestVersion}`);
-
-        // 版本比较：使用字符串比较可能不准确，但对于简单的版本号足够
-        if (latestVersion === currentVersion) {
-          return { success: true, isLatest: true, version: currentVersion };
-        } else {
-          return {
-            success: true,
-            isLatest: false,
-            currentVersion,
-            latestVersion,
-            releaseNotes: result.updateInfo.releaseNotes
-          };
-        }
-      } catch (error) {
-        console.error("Update check error:", error);
-        // 如果是没有发布版本的错误，返回友好提示
-        if (error.message && error.message.includes("No published versions")) {
-          return { success: true, isLatest: true, version: app.getVersion() };
-        }
-        return { success: false, message: error.message || "检查更新失败" };
-      }
-    });
-
-    // 处理下载更新请求
-    ipcMain.handle("download-update", async () => {
-      try {
-        const autoUpdater = setupAutoUpdater();
-
-        // 监听下载进度
-        autoUpdater.on("download-progress", (progressObj) => {
-          if (mainWindow) {
-            mainWindow.webContents.send("download-progress", {
-              percent: progressObj.percent,
-              transferred: progressObj.transferred,
-              total: progressObj.total,
-              bytesPerSecond: progressObj.bytesPerSecond
-            });
-          }
-        });
-
-        await autoUpdater.downloadUpdate();
-        return { success: true };
-      } catch (error) {
-        return { success: false, message: error.message };
-      }
-    });
-
-    // 处理安装更新请求
-    ipcMain.handle("install-update", () => {
-      isQuitting = true;
-      const autoUpdater = setupAutoUpdater();
-      autoUpdater.quitAndInstall();
-    });
   } catch (error) {
     console.error("Failed to launch desktop app:", error);
     app.quit();
@@ -262,6 +525,10 @@ app.whenReady().then(async () => {
 
 app.on("before-quit", () => {
   isQuitting = true;
+});
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on("window-all-closed", async () => {
