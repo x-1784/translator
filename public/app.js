@@ -451,7 +451,7 @@ function reuseHistoryItem(id) {
   if (!item) return;
 
   // 切换到首页
-  switchPage("translate");
+  switchPage("home");
 
   // 填充表单
   els.sourceLang.value = item.source;
@@ -1047,6 +1047,7 @@ function initFeatures() {
         startClipboardMonitor();
         setStatus("剪贴板监听已启用", "success");
       } else {
+        stopClipboardMonitor();
         setStatus("剪贴板监听已关闭", "success");
       }
     });
@@ -1066,11 +1067,24 @@ function initFeatures() {
   }
 }
 
+function stopClipboardMonitor() {
+  if (clipboardMonitorTimer !== null) {
+    clearInterval(clipboardMonitorTimer);
+    clipboardMonitorTimer = null;
+  }
+}
+
 function startClipboardMonitor() {
   if (!clipboardMonitorEnabled) return;
 
-  setInterval(async () => {
-    if (!clipboardMonitorEnabled) return;
+  // 先停掉已有定时器，避免反复开关叠加多个轮询
+  stopClipboardMonitor();
+
+  clipboardMonitorTimer = setInterval(async () => {
+    if (!clipboardMonitorEnabled) {
+      stopClipboardMonitor();
+      return;
+    }
 
     try {
       const text = await navigator.clipboard.readText();
@@ -1111,6 +1125,7 @@ let availableTags = JSON.parse(localStorage.getItem("availableTags") || '["工�
 let clipboardMonitorEnabled = localStorage.getItem("clipboardMonitor") === "true";
 let autoSpeakEnabled = localStorage.getItem("autoSpeak") === "true";
 let lastClipboardText = "";
+let clipboardMonitorTimer = null;
 
 function initDocumentTranslation() {
   const uploadBox = document.getElementById("uploadBox");
@@ -1187,11 +1202,11 @@ function initDocumentTranslation() {
 
 function handleFileSelect(file) {
   // 检查文件类型
-  const validTypes = [".txt", ".pdf"];
+  const validTypes = [".txt"];
   const fileExt = "." + file.name.split(".").pop().toLowerCase();
 
   if (!validTypes.includes(fileExt)) {
-    setStatus("仅支持 TXT 和 PDF 格式", "danger");
+    setStatus("目前仅支持 TXT 格式", "danger");
     return;
   }
 
@@ -1244,13 +1259,13 @@ async function translateDocument() {
     // 分段翻译（每段最多1000字符）
     const segments = splitTextIntoSegments(text, 1000);
     const translatedSegments = [];
+    const sourceLang = document.getElementById("docSourceLang").value;
+    const targetLang = document.getElementById("docTargetLang").value;
 
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
-      const sourceLang = document.getElementById("docSourceLang").value;
-      const targetLang = document.getElementById("docTargetLang").value;
 
-      const translated = await translateText(segment, sourceLang, targetLang);
+      const translated = await requestTranslation(segment, sourceLang, targetLang);
       translatedSegments.push(translated);
 
       // 更新进度
@@ -1282,30 +1297,33 @@ async function translateDocument() {
   }
 }
 
+// 调用后端翻译接口，供文档分段翻译复用
+async function requestTranslation(text, source, target) {
+  const response = await fetch("/api/translate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, source, target }),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || "翻译失败");
+  }
+
+  return payload.translatedText;
+}
+
 async function readFileContent(file) {
+  // PDF 需要专门的解析库才能提取文本，当前未集成，直接给出明确提示
+  if (file.name.toLowerCase().endsWith(".pdf")) {
+    throw new Error("暂不支持 PDF 解析，请先将内容另存为 TXT 后上传");
+  }
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-
-    reader.onload = (e) => {
-      const content = e.target.result;
-
-      // 如果是PDF，提取文本（简单处理）
-      if (file.name.toLowerCase().endsWith(".pdf")) {
-        // 注意：这里只是简单的文本提取，实际PDF可能需要专门的库
-        resolve(content);
-      } else {
-        // TXT文件直接返回
-        resolve(content);
-      }
-    };
-
+    reader.onload = (e) => resolve(e.target.result);
     reader.onerror = () => reject(new Error("文件读取失败"));
-
-    if (file.name.toLowerCase().endsWith(".pdf")) {
-      reader.readAsArrayBuffer(file);
-    } else {
-      reader.readAsText(file, "UTF-8");
-    }
+    reader.readAsText(file, "UTF-8");
   });
 }
 
@@ -1445,8 +1463,12 @@ function deleteTerm(id) {
 function applyCustomTerms(text) {
   let result = text;
   for (const term of customTerms) {
-    const regex = new RegExp(term.source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    result = result.replace(regex, term.target);
+    const escaped = term.source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // 纯 ASCII 词加词边界，避免短术语（如 "a"）在译文中被大面积误替换；
+    // 中日韩等文字没有词边界概念，保持原样匹配
+    const useWordBoundary = /^[\w\s'-]+$/.test(term.source);
+    const pattern = useWordBoundary ? `\\b${escaped}\\b` : escaped;
+    result = result.replace(new RegExp(pattern, 'gi'), term.target);
   }
   return result;
 }

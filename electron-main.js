@@ -20,7 +20,13 @@ function getIconPath() {
   return APP_ICON;
 }
 
+let autoUpdaterInstance = null;
+
 function setupAutoUpdater() {
+  if (autoUpdaterInstance) {
+    return autoUpdaterInstance;
+  }
+
   const { autoUpdater } = require("electron-updater");
 
   autoUpdater.autoDownload = false;
@@ -31,7 +37,20 @@ function setupAutoUpdater() {
     console.error("Update error:", err);
   });
 
-  return autoUpdater;
+  // 进度监听只注册一次，避免多次下载时重复推送
+  autoUpdater.on("download-progress", (progressObj) => {
+    if (mainWindow) {
+      mainWindow.webContents.send("download-progress", {
+        percent: progressObj.percent,
+        transferred: progressObj.transferred,
+        total: progressObj.total,
+        bytesPerSecond: progressObj.bytesPerSecond,
+      });
+    }
+  });
+
+  autoUpdaterInstance = autoUpdater;
+  return autoUpdaterInstance;
 }
 
 async function ensureServer() {
@@ -100,9 +119,11 @@ function createTray() {
     {
       label: "检查更新",
       click: () => {
-        autoUpdater.checkForUpdates().catch((err) => {
-          dialog.showErrorBox("更新检查失败", err.message || String(err));
-        });
+        setupAutoUpdater()
+          .checkForUpdates()
+          .catch((err) => {
+            dialog.showErrorBox("更新检查失败", err.message || String(err));
+          });
       },
     },
     { type: "separator" },
@@ -409,18 +430,7 @@ function registerIpcHandlers() {
     try {
       const autoUpdater = setupAutoUpdater();
 
-      // 监听下载进度
-      autoUpdater.on("download-progress", (progressObj) => {
-        if (mainWindow) {
-          mainWindow.webContents.send("download-progress", {
-            percent: progressObj.percent,
-            transferred: progressObj.transferred,
-            total: progressObj.total,
-            bytesPerSecond: progressObj.bytesPerSecond
-          });
-        }
-      });
-
+      // 进度监听已在 setupAutoUpdater 中统一注册
       await autoUpdater.downloadUpdate();
       return { success: true };
     } catch (error) {

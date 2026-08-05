@@ -5,7 +5,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
   downloadUpdate: () => ipcRenderer.invoke("download-update"),
   installUpdate: () => ipcRenderer.invoke("install-update"),
-  onDownloadProgress: (callback) => ipcRenderer.on("download-progress", (event, progress) => callback(progress)),
+  onDownloadProgress: (callback) => {
+    // 先清掉旧监听，避免重复下载时进度回调叠加
+    ipcRenderer.removeAllListeners("download-progress");
+    ipcRenderer.on("download-progress", (event, progress) => callback(progress));
+  },
   
   // 截图相关
   screenshotComplete: (region) => ipcRenderer.invoke("screenshot-complete", region),
