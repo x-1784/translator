@@ -5,14 +5,14 @@
     "description": "小简翻译 - 简洁优雅的桌面翻译工具",
     "main": "electron-main.js",
     "scripts": {
-        "start": "electron .",
-        "start:web": "node server-fixed.js",
-        "desktop": "electron .",
+        "start": "node start-app.js",
+        "start:web": "node -e \"const {startServer}=require('./app-server');startServer(3000).then(h=>console.log('小简翻译 Web 版已启动: '+h.url))\""
+        "desktop": "node start-app.js",
         "build:win": "electron-builder --win nsis portable",
         "pack:win": "electron-builder --dir"
     },
     "devDependencies": {
-        "electron": "^43.3.0",
+        "electron": "^31.7.7",
         "electron-builder": "^26.0.12",
         "png-to-ico": "^3.0.2",
         "sharp": "^0.35.3",
@@ -41,7 +41,6 @@
             "app-server.js",
             "electron-main.js",
             "preload.js",
-            "server-fixed.js",
             "package.json"
         ],
         "win": {

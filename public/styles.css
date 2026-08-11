@@ -1621,3 +1621,43 @@ html {
 [data-theme="light"] .progress-text {
   color: #0f172a;
 }
+
+/* ==================== 置顶按钮激活态 ==================== */
+#pinBtn.pinned {
+  background: #10b981;
+  color: white;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+}
+
+#pinBtn.pinned:hover {
+  background: #059669;
+}
+
+/* ==================== 快捷短语项 ==================== */
+.phrase-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.phrase-item:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent-primary);
+  transform: translateX(2px);
+}
+
+.phrase-item-text {
+  flex: 1;
+  color: var(--text-primary);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

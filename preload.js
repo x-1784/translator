@@ -10,11 +10,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.removeAllListeners("download-progress");
     ipcRenderer.on("download-progress", (event, progress) => callback(progress));
   },
-  
+
   // 截图相关
   screenshotComplete: (region) => ipcRenderer.invoke("screenshot-complete", region),
   screenshotCancel: () => ipcRenderer.invoke("screenshot-cancel"),
   onScreenshotCaptured: (callback) => ipcRenderer.on("screenshot-captured", (event, dataUrl) => callback(dataUrl)),
   getScreenshotShortcut: () => ipcRenderer.invoke("get-screenshot-shortcut"),
   triggerScreenshot: () => ipcRenderer.invoke("trigger-screenshot"),
+
+  // 窗口置顶
+  toggleAlwaysOnTop: () => ipcRenderer.invoke("toggle-always-on-top"),
 });

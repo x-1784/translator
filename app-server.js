@@ -240,7 +240,7 @@ async function translateViaGoogleFree({ text, source, target }) {
   };
 }
 
-async function translateText({ text, source, target }) {
+async function translateText({ text, source, target, engine = 'auto' }) {
   const cached = getCache(text, source, target);
   if (cached) {
     return { ...cached, fromCache: true };
@@ -248,18 +248,23 @@ async function translateText({ text, source, target }) {
 
   const failures = [];
 
-  for (const engineKey of ENGINE_ORDER) {
-    const engine = ENGINES[engineKey];
-    if (!engine) continue;
+  // 如果指定了引擎（非 auto），只尝试该引擎；否则按默认顺序轮询
+  const order = (engine !== 'auto' && ENGINES[engine])
+    ? [engine, ...ENGINE_ORDER.filter(k => k !== engine)]
+    : ENGINE_ORDER;
+
+  for (const engineKey of order) {
+    const eng = ENGINES[engineKey];
+    if (!eng) continue;
 
     try {
-      const result = await engine.handler({ text, source, target });
+      const result = await eng.handler({ text, source, target });
       setCache(text, source, target, result);
       return { ...result, fromCache: false };
     } catch (error) {
       const detail = formatFetchError(error);
-      failures.push(`${engine.label}: ${detail}`);
-      console.warn(`Engine ${engine.label} failed, trying next: ${detail}`);
+      failures.push(`${eng.label}: ${detail}`);
+      console.warn(`Engine ${eng.label} failed, trying next: ${detail}`);
     }
   }
 
@@ -314,7 +319,7 @@ function createServer() {
             return;
           }
 
-          const result = await translateText({ text, source, target });
+          const result = await translateText({ text, source, target, engine: parsed.engine || 'auto' });
           sendJson(res, 200, result);
         } catch (error) {
           sendJson(res, 500, {

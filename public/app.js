@@ -207,7 +207,7 @@ async function translate() {
     const response = await fetch("/api/translate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, source, target }),
+      body: JSON.stringify({ text, source, target, engine: settings.preferredEngine || 'auto' }),
     });
 
     const payload = await response.json();
@@ -250,6 +250,17 @@ async function translate() {
     els.output.classList.remove("loading");
     persistState();
   }
+}
+
+function scheduleAutoTranslate() {
+  if (!autoTranslateEnabled) return;
+  clearTimeout(autoTranslateTimer);
+  autoTranslateTimer = setTimeout(() => {
+    const text = els.sourceText.value.trim();
+    if (text.length > 0 && text.length < 5000) {
+      translate();
+    }
+  }, 800);
 }
 
 function setOutput(text, meta = {}) {
@@ -334,12 +345,12 @@ function loadHistory() {
 }
 
 function saveHistory() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(0, 50)));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(0, 200)));
 }
 
 function pushHistory(entry) {
   history.unshift({ ...entry, favorite: false, id: Date.now() });
-  history = history.slice(0, 50);
+  history = history.slice(0, 200);
   saveHistory();
   renderHistory();
 }
@@ -514,7 +525,13 @@ function applySettings() {
   if (settings.defaultTargetLang) {
     els.targetLang.value = settings.defaultTargetLang;
   }
-  
+  if (settings.preferredEngine) {
+    const engineSelect = document.getElementById('preferredEngine');
+    if (engineSelect) {
+      engineSelect.value = settings.preferredEngine;
+    }
+  }
+
   // 应用主题设置
   if (settings.theme) {
     document.documentElement.setAttribute("data-theme", settings.theme);
@@ -527,6 +544,10 @@ function applySettings() {
 function updateSettings() {
   settings.defaultSourceLang = els.defaultSourceLang.value;
   settings.defaultTargetLang = els.defaultTargetLang.value;
+  const engineSelect = document.getElementById('preferredEngine');
+  if (engineSelect) {
+    settings.preferredEngine = engineSelect.value;
+  }
   saveSettings();
   applySettings();
   setStatus("设置已保存", "success");
@@ -700,7 +721,7 @@ function importHistory() {
         return !existingIds.has(item.id);
       });
 
-      history = [...newItems, ...history].slice(0, 100);
+      history = [...newItems, ...history].slice(0, 200);
       saveHistory();
       renderHistory();
       alert(`成功导入 ${newItems.length} 条历史记录`);
@@ -846,6 +867,7 @@ function wireEvents() {
   els.sourceText.addEventListener("input", () => {
     persistState();
     updateCounts();
+    scheduleAutoTranslate();
   });
   els.sourceLang.addEventListener("change", persistState);
   els.targetLang.addEventListener("change", persistState);
@@ -883,8 +905,29 @@ function wireEvents() {
       }
     });
   }
+
+  // 窗口置顶按钮
+  const pinBtn = document.getElementById("pinBtn");
+  if (pinBtn) {
+    pinBtn.addEventListener("click", () => {
+      if (window.electronAPI && window.electronAPI.toggleAlwaysOnTop) {
+        window.electronAPI.toggleAlwaysOnTop().then(isPinned => {
+          pinBtn.style.background = isPinned ? "#10b981" : "";
+          pinBtn.title = isPinned ? "取消置顶" : "窗口置顶";
+          setStatus(isPinned ? "窗口已置顶" : "已取消置顶", "success");
+        });
+      } else {
+        setStatus("窗口置顶仅在桌面版可用", "danger");
+      }
+    });
+  }
+
   els.defaultSourceLang.addEventListener("change", updateSettings);
   els.defaultTargetLang.addEventListener("change", updateSettings);
+  const preferredEngine = document.getElementById("preferredEngine");
+  if (preferredEngine) {
+    preferredEngine.addEventListener("change", updateSettings);
+  }
   els.exportHistoryBtn.addEventListener("click", exportHistory);
   els.importHistoryBtn.addEventListener("click", () => els.importHistoryInput.click());
   els.importHistoryInput.addEventListener("change", importHistory);
@@ -895,6 +938,9 @@ function wireEvents() {
 
   // 术语管理功能
   initTermsManagement();
+
+  // 快捷短语库功能
+  initPhrasesManagement();
 
   // 剪贴板监听和朗读功能
   initFeatures();
@@ -1003,17 +1049,13 @@ function initImageOCR() {
   }
 
   async function recognizeImage(file) {
-    if (!window.Tesseract) {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-      document.head.appendChild(script);
-      await new Promise((resolve, reject) => {
-        script.onload = resolve;
-        script.onerror = reject;
-      });
+    // 使用与截图翻译一致的 Tesseract v7 API
+    const { createWorker } = window.Tesseract || {};
+
+    if (!createWorker) {
+      throw new Error('OCR 功能未加载，请刷新页面重试');
     }
 
-    const { createWorker } = window.Tesseract;
     const worker = await createWorker('chi_sim+eng', 1, {
       logger: (m) => {
         if (m.status === 'recognizing text') {
@@ -1037,6 +1079,16 @@ function initImageOCR() {
 function initFeatures() {
   const clipboardMonitor = document.getElementById("clipboardMonitor");
   const autoSpeak = document.getElementById("autoSpeak");
+  const autoTranslate = document.getElementById("autoTranslate");
+
+  if (autoTranslate) {
+    autoTranslate.checked = autoTranslateEnabled;
+    autoTranslate.addEventListener("change", (e) => {
+      autoTranslateEnabled = e.target.checked;
+      localStorage.setItem("autoTranslate", autoTranslateEnabled);
+      setStatus(autoTranslateEnabled ? "自动翻译已启用" : "自动翻译已关闭", "success");
+    });
+  }
 
   if (clipboardMonitor) {
     clipboardMonitor.checked = clipboardMonitorEnabled;
@@ -1124,8 +1176,13 @@ let availableTags = JSON.parse(localStorage.getItem("availableTags") || '["工�
 // 功能配置
 let clipboardMonitorEnabled = localStorage.getItem("clipboardMonitor") === "true";
 let autoSpeakEnabled = localStorage.getItem("autoSpeak") === "true";
+let autoTranslateEnabled = localStorage.getItem("autoTranslate") === "true";
 let lastClipboardText = "";
 let clipboardMonitorTimer = null;
+let autoTranslateTimer = null;
+
+// 快捷短语库
+let phrases = JSON.parse(localStorage.getItem("phrases") || "[]");
 
 function initDocumentTranslation() {
   const uploadBox = document.getElementById("uploadBox");
@@ -1634,6 +1691,111 @@ function renderStats() {
         `).join('')
       : '<p style="opacity: 0.5; text-align: center;">暂无标签数据</p>';
   }
+}
+
+// 快捷短语库管理
+function initPhrasesManagement() {
+  const managePhrasesBtn = document.getElementById("managePhrasesBtn");
+  const phrasesModal = document.getElementById("phrasesModal");
+  const closePhrasesModal = document.getElementById("closePhrasesModal");
+  const addPhraseBtn = document.getElementById("addPhraseBtn");
+  const phraseText = document.getElementById("phraseText");
+
+  if (!managePhrasesBtn) return;
+
+  // 打开短语管理
+  managePhrasesBtn.addEventListener("click", () => {
+    phrasesModal.style.display = "flex";
+    renderPhrases();
+  });
+
+  // 关闭弹窗
+  closePhrasesModal.addEventListener("click", () => {
+    phrasesModal.style.display = "none";
+  });
+
+  // 点击背景关闭
+  phrasesModal.addEventListener("click", (e) => {
+    if (e.target === phrasesModal) {
+      phrasesModal.style.display = "none";
+    }
+  });
+
+  // 添加短语
+  addPhraseBtn.addEventListener("click", () => {
+    const text = phraseText.value.trim();
+
+    if (!text) {
+      setStatus("请输入短语内容", "danger");
+      return;
+    }
+
+    // 检查是否已存在
+    const exists = phrases.some(p => p.text.toLowerCase() === text.toLowerCase());
+    if (exists) {
+      setStatus("该短语已存在", "danger");
+      return;
+    }
+
+    phrases.push({ text, id: Date.now() });
+    localStorage.setItem("phrases", JSON.stringify(phrases));
+
+    phraseText.value = "";
+    renderPhrases();
+    setStatus("短语添加成功", "success");
+  });
+
+  // Enter 键添加
+  phraseText.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      addPhraseBtn.click();
+    }
+  });
+}
+
+function renderPhrases() {
+  const phrasesList = document.getElementById("phrasesList");
+
+  if (phrases.length === 0) {
+    phrasesList.innerHTML = `
+      <div style="text-align: center; padding: 40px; opacity: 0.5;">
+        <p>还没有添加短语</p>
+        <p style="font-size: 14px;">添加常用短语可以快速插入到翻译框</p>
+      </div>
+    `;
+    return;
+  }
+
+  phrasesList.innerHTML = phrases.map(phrase => `
+    <div class="phrase-item" style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #1e293b; border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='#1e293b'">
+      <div style="flex: 1;" onclick="insertPhrase(${phrase.id})">
+        <div style="color: #e2e8f0;">${escapeHtml(phrase.text)}</div>
+      </div>
+      <button class="icon-btn" onclick="deletePhrase(${phrase.id})" title="删除">🗑️</button>
+    </div>
+  `).join("");
+}
+
+function insertPhrase(id) {
+  const phrase = phrases.find(p => p.id === id);
+  if (!phrase) return;
+
+  // 切换到首页并插入短语
+  switchPage("home");
+  els.sourceText.value = phrase.text;
+  updateCounts();
+  persistState();
+
+  // 关闭弹窗
+  document.getElementById("phrasesModal").style.display = "none";
+  setStatus("已插入短语", "success");
+}
+
+function deletePhrase(id) {
+  phrases = phrases.filter(p => p.id !== id);
+  localStorage.setItem("phrases", JSON.stringify(phrases));
+  renderPhrases();
+  setStatus("短语已删除", "success");
 }
 
 init();

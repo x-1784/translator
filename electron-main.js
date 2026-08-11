@@ -1,9 +1,20 @@
-﻿const { app, BrowserWindow, Menu, Tray, nativeImage, dialog, ipcMain } = require("electron");
-const { globalShortcut, desktopCapturer, screen } = require("electron");
+﻿const electron = require("electron");
 const path = require("node:path");
-// 缓存写入 userData，避免打包后 asar 只读导致失败
-process.env.TRANSLATION_CACHE_DIR =
-  process.env.TRANSLATION_CACHE_DIR || path.join(app.getPath("userData"), "translation-cache");
+
+// 延迟解构，确保在 Electron 环境中才访问
+let app, BrowserWindow, Menu, Tray, nativeImage, dialog, ipcMain;
+let globalShortcut, desktopCapturer, screen;
+
+// 立即检查是否在 Electron 环境中
+if (typeof electron === 'string') {
+  console.error('错误：electron-main.js 必须通过 Electron 运行，而非 Node.js');
+  console.error('请使用: npm start 或 electron .');
+  process.exit(1);
+}
+
+// 安全解构
+({ app, BrowserWindow, Menu, Tray, nativeImage, dialog, ipcMain } = electron);
+({ globalShortcut, desktopCapturer, screen } = electron);
 
 const { startServer } = require("./app-server");
 
@@ -503,6 +514,13 @@ function registerIpcHandlers() {
       mainWindow.show();
     }
   });
+  ipcMain.handle("toggle-always-on-top", () => {
+    if (!mainWindow) return false;
+    const current = mainWindow.isAlwaysOnTop();
+    mainWindow.setAlwaysOnTop(!current, "floating");
+    return !current;
+  });
+
   ipcMain.handle("get-screenshot-shortcut", () => activeShortcut);
 
   ipcMain.handle("trigger-screenshot", () => {
@@ -512,6 +530,11 @@ function registerIpcHandlers() {
 }
 
 app.whenReady().then(async () => {
+  // 缓存写入 userData，避免打包后 asar 只读导致失败
+  if (!process.env.TRANSLATION_CACHE_DIR) {
+    process.env.TRANSLATION_CACHE_DIR = path.join(app.getPath("userData"), "translation-cache");
+  }
+
   try {
     registerIpcHandlers();
     await createWindow();
