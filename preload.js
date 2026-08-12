@@ -20,4 +20,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // 窗口置顶
   toggleAlwaysOnTop: () => ipcRenderer.invoke("toggle-always-on-top"),
+
+  // AI 精准识别 Key
+  saveZhipuKey: (key) => ipcRenderer.invoke("save-zhipu-key", key),
+  getZhipuKeyStatus: () => ipcRenderer.invoke("get-zhipu-key-status"),
 });

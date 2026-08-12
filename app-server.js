@@ -240,6 +240,184 @@ async function translateViaGoogleFree({ text, source, target }) {
   };
 }
 
+// ==================== 有道词典查询（单词多释义） ====================
+// 免费公开接口，无 key。返回 ec(英→中) / ce(中→英) / 词形 / 词组 / 例句 / 网络释义。
+// 解析全部防御性取值，任何字段缺失都降级；全空则抛错，由调用方回退普通翻译。
+function parseDictTextLines(trs) {
+  if (!Array.isArray(trs)) return [];
+  const lines = [];
+  for (const t of trs) {
+    const l = t?.tr?.[0]?.l;
+    if (!l) continue;
+
+    // ec(英→中) 的 i 是字符串数组（形如 "n. 财政部；..."）；
+    // ce(中→英) 的 i 是 "" + {#text:"warehouse"} 对象，pos 单独在 l.pos，#tran 是中文释义
+    const pos = typeof l.pos === "string" && l.pos.trim() ? `${l.pos.trim()} ` : "";
+    const items = Array.isArray(l.i) ? l.i : [l.i].filter(Boolean);
+    const parts = [];
+
+    for (const entry of items) {
+      if (typeof entry === "string") {
+        const s = entry.trim();
+        if (s) parts.push(s);
+      } else if (entry && typeof entry === "object" && typeof entry["#text"] === "string") {
+        const s = entry["#text"].trim();
+        if (s) parts.push(s);
+      }
+    }
+
+    // 无英文词条时，用 #tran 兜底
+    if (parts.length === 0 && typeof l["#tran"] === "string" && l["#tran"].trim()) {
+      parts.push(l["#tran"].trim());
+    }
+
+    if (parts.length) lines.push(pos + parts.join("；"));
+  }
+  return lines;
+}
+
+async function lookupYoudaoDict(word) {
+  const query = new URL("https://dict.youdao.com/jsonapi");
+  query.searchParams.set("q", word);
+
+  const body = await requestJson(query);
+
+  const ecWord = body?.ec?.word?.[0];
+  const ceWord = body?.ce?.word?.[0];
+
+  const phonetic = ecWord?.phone || ceWord?.phone || "";
+  const ecLines = parseDictTextLines(ecWord?.trs);
+  const ceLines = parseDictTextLines(ceWord?.trs);
+
+  // 中→英：结构化「英文词 + 中文释义」条目（汉英词典），用于目标语言为英文时展示
+  const ceEntries = [];
+  for (const t of Array.isArray(ceWord?.trs) ? ceWord.trs : []) {
+    const l = t?.tr?.[0]?.l;
+    if (!l) continue;
+    const pos = typeof l.pos === "string" ? l.pos.trim() : "";
+    const words = (Array.isArray(l.i) ? l.i : [])
+      .map((x) => (typeof x === "string" ? x : x?.["#text"]))
+      .map((s) => String(s || "").trim())
+      .filter(Boolean);
+    const meanings = typeof l["#tran"] === "string" ? l["#tran"].trim() : "";
+    if (words.length) ceEntries.push({ pos, words, meanings });
+  }
+
+  const forms = Array.isArray(ecWord?.wfs)
+    ? ecWord.wfs
+        .map((w) => ({ name: w?.wf?.name || "", value: w?.wf?.value || "" }))
+        .filter((f) => f.value)
+    : [];
+
+  const phrases = Array.isArray(body?.phrs)
+    ? body.phrs.map((p) => p?.phr?.headword || "").filter(Boolean).slice(0, 8)
+    : [];
+
+  // sentence-eng 是带 <b> 高亮的源语言句子（字段名有误导性），sentence-translation 才是目标语言译文
+  const sentencePairs = body?.blng_sents_part?.["sentence-pair"];
+  const examples = Array.isArray(sentencePairs)
+    ? sentencePairs
+        .slice(0, 5)
+        .map((p) => ({
+          sentence: p?.["sentence-eng"] || p?.sentence || "",
+          translation: p?.["sentence-translation"] || "",
+        }))
+        .filter((e) => e.sentence)
+    : [];
+
+  const webTransArr = body?.web_trans?.["web-translation"];
+  const webTrans = Array.isArray(webTransArr)
+    ? webTransArr
+        .slice(0, 5)
+        .map((w) => ({
+          key: w?.key || "",
+          translations: Array.isArray(w?.trans) ? w.trans.map((t) => t?.tgt || "").filter(Boolean) : [],
+        }))
+        .filter((w) => w.key || w.translations.length)
+    : [];
+
+  if (ecLines.length === 0 && ceLines.length === 0 && examples.length === 0 && webTrans.length === 0) {
+    throw new Error(`No dictionary entry found for "${word}"`);
+  }
+
+  return { word, phonetic, ecLines, ceLines, ceEntries, forms, phrases, examples, webTrans };
+}
+
+// ==================== AI OCR（智谱 GLM 视觉，识别精度远高于 Tesseract） ====================
+// Key 优先级：环境变量 ZHIPU_API_KEY → ZHIPU_KEY_FILE（桌面版注入 userData）→ 项目根目录 zhipu-key.txt
+function getZhipuKey() {
+  const envKey = String(process.env.ZHIPU_API_KEY || "").trim();
+  if (envKey) return envKey;
+
+  const candidates = [
+    process.env.ZHIPU_KEY_FILE,
+    path.join(ROOT, "zhipu-key.txt"),
+  ];
+  for (const file of candidates) {
+    if (!file) continue;
+    try {
+      if (fs.existsSync(file)) {
+        const key = fs.readFileSync(file, "utf8").trim();
+        if (key) return key;
+      }
+    } catch (error) {
+      // 忽略单个文件读取失败
+    }
+  }
+  return "";
+}
+
+const OCR_PROMPT =
+  "请提取这张图片中的所有文字，原样输出。只输出识别出的文字内容，不要翻译，不要添加任何解释或格式符号。";
+
+async function ocrViaGLM(dataUrl) {
+  const key = getZhipuKey();
+  if (!key) {
+    throw new Error("未配置智谱 API Key（AI 精准识别）");
+  }
+
+  const match = /^data:([^;,]+);base64,([\s\S]+)$/.exec(dataUrl || "");
+  if (!match) {
+    throw new Error("无效的图片数据");
+  }
+  const [, mime, b64] = match;
+
+  const payload = {
+    model: String(process.env.ZHIPU_MODEL || "glm-4v-flash").trim() || "glm-4v-flash",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } },
+          { type: "text", text: OCR_PROMPT },
+        ],
+      },
+    ],
+  };
+
+  const response = await fetch("https://open.bigmodel.cn/api/paas/v4/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${key}`,
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(60000),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`智谱 API 错误 (HTTP ${response.status})${detail ? ": " + detail.slice(0, 200) : ""}`);
+  }
+
+  const result = await response.json();
+  const text = result?.choices?.[0]?.message?.content;
+  if (typeof text !== "string" || !text.trim()) {
+    throw new Error("智谱 API 响应格式异常");
+  }
+  return text.trim();
+}
+
 async function translateText({ text, source, target, engine = 'auto' }) {
   const cached = getCache(text, source, target);
   if (cached) {
@@ -324,6 +502,86 @@ function createServer() {
         } catch (error) {
           sendJson(res, 500, {
             error: error instanceof Error ? error.message : "Translation failed.",
+          });
+        }
+      });
+
+      return;
+    }
+
+    if (req.method === "POST" && requestUrl.pathname === "/api/dictionary") {
+      let body = "";
+
+      req.on("data", (chunk) => {
+        body += chunk;
+        if (body.length > 1_000_000) {
+          req.destroy();
+        }
+      });
+
+      req.on("end", async () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          const word = String(parsed.word || "").trim();
+
+          if (!word) {
+            sendJson(res, 400, { error: "Please enter a word to look up." });
+            return;
+          }
+
+          // 复用翻译缓存，source/target 用 "dict" 哨兵避免与真实语言码冲突
+          const cached = getCache(word, "dict", "dict");
+          if (cached) {
+            sendJson(res, 200, { ...cached, provider: "有道词典", fromCache: true });
+            return;
+          }
+
+          const result = await lookupYoudaoDict(word);
+          setCache(word, "dict", "dict", result);
+          sendJson(res, 200, { ...result, provider: "有道词典", fromCache: false });
+        } catch (error) {
+          sendJson(res, 500, {
+            error: error instanceof Error ? error.message : "Dictionary lookup failed.",
+          });
+        }
+      });
+
+      return;
+    }
+
+    if (req.method === "GET" && requestUrl.pathname === "/api/ocr/status") {
+      sendJson(res, 200, {
+        configured: !!getZhipuKey(),
+        model: String(process.env.ZHIPU_MODEL || "glm-4v-flash").trim() || "glm-4v-flash",
+      });
+      return;
+    }
+
+    if (req.method === "POST" && requestUrl.pathname === "/api/ocr") {
+      let body = "";
+
+      req.on("data", (chunk) => {
+        body += chunk;
+        if (body.length > 10_000_000) {
+          req.destroy();
+        }
+      });
+
+      req.on("end", async () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          const image = String(parsed.image || "");
+
+          if (!image) {
+            sendJson(res, 400, { error: "缺少图片数据" });
+            return;
+          }
+
+          const text = await ocrViaGLM(image);
+          sendJson(res, 200, { text });
+        } catch (error) {
+          sendJson(res, 500, {
+            error: error instanceof Error ? error.message : "OCR 识别失败",
           });
         }
       });

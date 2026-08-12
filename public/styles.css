@@ -217,7 +217,8 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 32px;
-  height: calc(100vh - 180px);
+  flex: 1; /* 填充 toolbar 与 statusbar 之间的剩余空间，而非硬编码 100vh 估算 */
+  min-height: 0; /* 内容超高时允许收缩，配合面板内滚动，避免撑破页面 */
 }
 
 .panel {
@@ -226,6 +227,7 @@ body {
   padding: 28px;
   display: flex;
   flex-direction: column;
+  min-height: 0; /* 网格项可收缩：避免词典等高内容把固定高度的网格撑破溢出 */
   box-shadow: var(--shadow-lg);
   border: 1px solid var(--border-color);
   transition: all 0.3s;
@@ -336,6 +338,7 @@ body {
 
 .output {
   flex: 1;
+  min-height: 0; /* 允许在 flex 面板内收缩：内容过高时内部滚动，避免撑破整体布局 */
   padding: 20px;
   background: var(--bg-secondary);
   border: 1.5px solid var(--border-color);
@@ -372,6 +375,172 @@ body {
   color: var(--text-muted);
   font-style: italic;
   opacity: 0.6;
+}
+
+/* ==================== 查词按钮（ghost 变体） ==================== */
+.primary-btn.ghost {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  box-shadow: none;
+  border: 1.5px solid var(--border-color);
+}
+
+.primary-btn.ghost:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.primary-btn.ghost:active {
+  transform: scale(0.98);
+}
+
+/* ==================== 单词词典卡片 ==================== */
+.dict-card {
+  white-space: normal;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dict-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dict-word {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+}
+
+.dict-phonetic {
+  font-family: 'Georgia', serif;
+  color: var(--text-muted);
+  font-size: 16px;
+}
+
+.dict-badge {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
+.dict-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dict-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.dict-line {
+  font-size: 15px;
+  line-height: 1.9;
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--accent-primary);
+}
+
+.dict-forms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dict-form-chip {
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+
+.dict-form-chip b {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.dict-phrase {
+  font-size: 14px;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+}
+
+.dict-example {
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dict-example-src {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.dict-example-tgt {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.dict-web {
+  font-size: 14px;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+}
+
+.dict-web strong {
+  color: var(--text-primary);
+}
+
+/* 汉英词典列表（中文词 → 英文词 + 中文释义），对齐用户示例：无边框、无词性标注 */
+.dict-en-list {
+  white-space: normal;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.dict-en-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dict-en-word {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.dict-en-meaning {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.8;
 }
 
 /* ==================== 按钮样式 ==================== */

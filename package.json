@@ -6,7 +6,7 @@
     "main": "electron-main.js",
     "scripts": {
         "start": "node start-app.js",
-        "start:web": "node -e \"const {startServer}=require('./app-server');startServer(3000).then(h=>console.log('小简翻译 Web 版已启动: '+h.url))\""
+        "start:web": "node -e \"const {startServer}=require('./app-server');startServer(3000).then(h=>console.log('小简翻译 Web 版已启动: '+h.url))\"",
         "desktop": "node start-app.js",
         "build:win": "electron-builder --win nsis portable",
         "pack:win": "electron-builder --dir"

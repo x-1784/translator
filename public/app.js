@@ -27,6 +27,7 @@ const els = {
   sourceText: document.getElementById("sourceText"),
   output: document.getElementById("output"),
   translateBtn: document.getElementById("translateBtn"),
+  dictBtn: document.getElementById("dictBtn"),
   swapBtn: document.getElementById("swapBtn"),
   clearBtn: document.getElementById("clearBtn"),
   copyBtn: document.getElementById("copyBtn"),
@@ -58,25 +59,46 @@ const languageNames = Object.fromEntries(LANGUAGES);
 let history = loadHistory();
 let settings = loadSettings();
 
+// OCR：AI 精准识别优先（智谱 GLM 视觉），失败自动回退本地 Tesseract
+async function ocrImage(dataUrl) {
+  try {
+    const response = await fetch("/api/ocr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    const payload = await response.json();
+    if (response.ok && payload.text && payload.text.trim()) {
+      return { text: payload.text.trim(), provider: "AI 精准识别" };
+    }
+    throw new Error(payload.error || "AI OCR 失败");
+  } catch (error) {
+    console.warn("AI OCR 失败，回退本地识别:", error.message);
+    const text = await ocrWithTesseract(dataUrl);
+    return { text: (text || "").trim(), provider: "本地识别" };
+  }
+}
+
+async function ocrWithTesseract(dataUrl) {
+  const { createWorker } = window.Tesseract || {};
+  if (!createWorker) {
+    throw new Error("OCR 引擎未加载，请刷新页面重试");
+  }
+  const worker = await createWorker("eng+chi_sim");
+  const { data: { text } } = await worker.recognize(dataUrl);
+  await worker.terminate();
+  return text;
+}
+
 async function handleScreenshotCaptured(dataUrl) {
   try {
     // 切换到首页
     switchPage("home");
-    
+
     // 显示加载状态
     setStatus("正在识别图片文字...", "loading");
-    
-    // 使用 tesseract.js 进行 OCR
-    const { createWorker } = window.Tesseract || {};
-    
-    if (!createWorker) {
-      setStatus("OCR 功能未加载，请刷新页面重试", "error");
-      return;
-    }
 
-    const worker = await createWorker("eng+chi_sim");
-    const { data: { text } } = await worker.recognize(dataUrl);
-    await worker.terminate();
+    const { text } = await ocrImage(dataUrl);
 
     if (!text || !text.trim()) {
       setStatus("未识别到文字", "error");
@@ -86,11 +108,11 @@ async function handleScreenshotCaptured(dataUrl) {
     // 将识别的文字填入输入框
     els.sourceText.value = text.trim();
     updateCounts();
-    
+
     // 自动翻译
     setStatus("文字识别成功，正在翻译...", "loading");
     await translate();
-    
+
   } catch (error) {
     console.error("Screenshot OCR error:", error);
     setStatus("图片识别失败: " + error.message, "error");
@@ -184,7 +206,39 @@ function createOption(code, label) {
   return option;
 }
 
-async function translate() {
+function isWordLookup(text) {
+  const t = String(text || "").trim();
+  if (!t || t.length > 30) return false;
+  if (/\s/.test(t)) return false; // 带空格的短语不算单词
+  if (/^[A-Za-z][A-Za-z'-]*$/.test(t)) return true; // 拉丁单词
+  if (/^[一-鿿]{1,12}$/.test(t)) return true; // 中文词
+  if (/^[぀-ヿ]{1,12}$/.test(t)) return true; // 日文词
+  if (/^[가-힯]{1,12}$/.test(t)) return true; // 韩文词
+  // 其他语种的字母类单 token
+  return /^[^\s\d\W][\p{L}\p{M}'-]*$/u.test(t);
+}
+
+async function lookupDictionary(text) {
+  const response = await fetch("/api/dictionary", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ word: text.trim() }),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || "词典查询失败");
+  }
+
+  const lines = (payload.ecLines || []).concat(payload.ceLines || []);
+  if (lines.length === 0 && !(payload.examples || []).length && !(payload.webTrans || []).length) {
+    throw new Error("未找到词典条目");
+  }
+
+  return payload;
+}
+
+async function translate(mode = "auto") {
   const text = els.sourceText.value.trim();
   const source = els.sourceLang.value;
   const target = els.targetLang.value;
@@ -202,6 +256,87 @@ async function translate() {
   els.translateBtn.disabled = true;
   els.output.classList.add("loading");
   setStatus("正在翻译中...");
+
+  // 单词走词典：目标中文时展示完整词典卡片；目标非中文（如英译）时只取词典的目标语言释义作为译文。
+  // 英文单词→中文 或 中文词→英文 都能拿到目标语言内容；其他方向词典无数据会自动回退普通翻译。
+  const wantsDict = mode === "word" || (mode === "auto" && isWordLookup(text));
+  if (wantsDict) {
+    try {
+      const payload = await lookupDictionary(text);
+
+      // 目标非中文（中文词→英文）：展示汉英词典条目（英文词 + 中文释义），避免「翻译成英语却出中文词条」
+      if (target !== "zh-CN") {
+        const entries = (payload.ceEntries || []).filter((e) => e.words && e.words.length);
+        if (!entries.length) throw new Error("词典无目标语言释义");
+
+        // 对齐用户示例：每个英文单词加粗一行（左侧发音按钮），下方小字号显示中文释义
+        let html = `<div class="dict-en-list">`;
+        for (const e of entries) {
+          const wordText = e.words.join("、");
+          html += `<div class="dict-en-item">`;
+          html += `<div class="dict-en-word">${escapeHtml(wordText)}</div>`;
+          if (e.meanings) html += `<div class="dict-en-meaning">${escapeHtml(e.meanings)}</div>`;
+          html += `</div>`;
+        }
+        html += `</div>`;
+
+        els.output.innerHTML = html;
+        els.detectedText.textContent = `查询词条: ${escapeHtml(text)}`;
+        els.lastUpdated.textContent = `最近更新: ${new Date().toLocaleTimeString("zh-CN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}`;
+        updateCounts();
+
+        const cacheTag = payload.fromCache ? " · 缓存" : "";
+        setStatus(`词典 · ${payload.provider || "有道词典"}${cacheTag}`, "success");
+        const joined = entries
+          .map((e) => `${e.words.join("、")}${e.meanings ? "：" + e.meanings : ""}`)
+          .join("；");
+        pushHistory({
+          source,
+          target,
+          sourceText: text,
+          translatedText: joined || text,
+          time: new Date().toLocaleString("zh-CN", {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        });
+        els.translateBtn.disabled = false;
+        els.output.classList.remove("loading");
+        persistState();
+        return;
+      }
+
+      renderDictionaryCard(payload);
+      const cacheTag = payload.fromCache ? " · 缓存" : "";
+      setStatus(`词典 · ${payload.provider || "有道词典"}${cacheTag}`, "success");
+
+      const joined = (payload.ecLines || payload.ceLines || []).join("；");
+      pushHistory({
+        source,
+        target,
+        sourceText: text,
+        translatedText: joined || text,
+        time: new Date().toLocaleString("zh-CN", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      });
+
+      els.translateBtn.disabled = false;
+      els.output.classList.remove("loading");
+      persistState();
+      return;
+    } catch (error) {
+      console.warn("Dictionary lookup failed, falling back to translate:", error.message);
+    }
+  }
 
   try {
     const response = await fetch("/api/translate", {
@@ -224,11 +359,6 @@ async function translate() {
     setOutput(finalText, { detectedSource: payload.detectedSource });
     const cacheTag = payload.fromCache ? " · 缓存" : "";
     setStatus(`翻译完成 (${payload.provider || "默认服务"}${cacheTag})`, "success");
-
-    // 自动朗读
-    if (autoSpeakEnabled && finalText) {
-      speakText(finalText);
-    }
 
     pushHistory({
       source: payload.detectedSource || source,
@@ -269,6 +399,94 @@ function setOutput(text, meta = {}) {
     : '<p class="placeholder">翻译结果会显示在这里</p>';
 
   els.detectedText.textContent = `检测语言: ${humanLanguage(meta.detectedSource)}`;
+  els.lastUpdated.textContent = `最近更新: ${new Date().toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+  updateCounts();
+}
+
+function renderDictionaryCard(payload) {
+  const word = payload.word || "";
+  const phonetic = payload.phonetic || "";
+  const ecLines = payload.ecLines || [];
+  const ceLines = payload.ceLines || [];
+  const forms = payload.forms || [];
+  const phrases = payload.phrases || [];
+  const examples = payload.examples || [];
+  const webTrans = payload.webTrans || [];
+
+  const lines = ecLines.length ? ecLines : ceLines;
+
+  let html = `<div class="dict-card">`;
+
+  // 头部：单词 + 音标
+  html += `<div class="dict-head">`;
+  html += `<span class="dict-word">${escapeHtml(word)}</span>`;
+  if (phonetic) html += `<span class="dict-phonetic">${escapeHtml(phonetic)}</span>`;
+  html += `<span class="dict-badge">词典</span>`;
+  html += `</div>`;
+
+  // 多释义（含词性）
+  if (lines.length) {
+    html += `<div class="dict-section">`;
+    for (const line of lines) {
+      html += `<div class="dict-line">${escapeHtml(line)}</div>`;
+    }
+    html += `</div>`;
+  }
+
+  // 词形变化
+  if (forms.length) {
+    html += `<div class="dict-section">`;
+    html += `<h4 class="dict-section-title">词形变化</h4>`;
+    html += `<div class="dict-forms">`;
+    for (const f of forms) {
+      html += `<span class="dict-form-chip">${escapeHtml(f.name)} <b>${escapeHtml(f.value)}</b></span>`;
+    }
+    html += `</div></div>`;
+  }
+
+  // 常用词组
+  if (phrases.length) {
+    html += `<div class="dict-section">`;
+    html += `<h4 class="dict-section-title">常用词组</h4>`;
+    html += `<div class="dict-phrases">`;
+    for (const p of phrases) {
+      html += `<div class="dict-phrase">${escapeHtml(p)}</div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  // 双语例句
+  if (examples.length) {
+    html += `<div class="dict-section">`;
+    html += `<h4 class="dict-section-title">双语例句</h4>`;
+    for (const ex of examples) {
+      html += `<div class="dict-example">`;
+      html += `<div class="dict-example-src">${escapeHtmlKeepBold(ex.sentence)}</div>`;
+      if (ex.translation) html += `<div class="dict-example-tgt">${escapeHtmlKeepBold(ex.translation)}</div>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  // 网络释义
+  if (webTrans.length) {
+    html += `<div class="dict-section">`;
+    html += `<h4 class="dict-section-title">网络释义</h4>`;
+    for (const w of webTrans) {
+      html += `<div class="dict-web"><strong>${escapeHtml(w.key)}</strong>`;
+      if (w.translations.length) html += `：${escapeHtml(w.translations.join("；"))}`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+
+  els.output.innerHTML = html;
+  els.detectedText.textContent = `查询词条: ${escapeHtml(word)}`;
   els.lastUpdated.textContent = `最近更新: ${new Date().toLocaleTimeString("zh-CN", {
     hour: "2-digit",
     minute: "2-digit",
@@ -807,6 +1025,13 @@ function escapeHtml(text) {
     .replaceAll("'", "&#39;");
 }
 
+// 例句数据里有道会加 <b> 强调高亮；转义全部 HTML 后，再把 <b></b> 还原成真正的加粗
+function escapeHtmlKeepBold(text) {
+  return escapeHtml(text).replace(/&lt;\/?b&gt;/g, (m) =>
+    m === "&lt;b&gt;" ? "<b>" : "</b>"
+  );
+}
+
 function getRelativeTime(timestamp) {
   const now = Date.now();
   const diff = now - timestamp;
@@ -848,21 +1073,17 @@ function wireEvents() {
     });
   });
 
-  els.translateBtn.addEventListener("click", translate);
+  els.translateBtn.addEventListener("click", () => translate("auto"));
+  els.dictBtn.addEventListener("click", () => {
+    if (!els.sourceText.value.trim()) {
+      setStatus("请输入要查询的单词", "danger");
+      return;
+    }
+    translate("word");
+  });
   els.swapBtn.addEventListener("click", swapLanguages);
   els.clearBtn.addEventListener("click", clearAll);
   els.copyBtn.addEventListener("click", copyOutput);
-
-  const speakBtn = document.getElementById("speakBtn");
-  if (speakBtn) {
-    speakBtn.addEventListener("click", () => {
-      const text = els.output.textContent.trim();
-      if (text && text !== "翻译结果会显示在这里") {
-        speakText(text);
-        setStatus("正在朗读...", "success");
-      }
-    });
-  }
 
   els.sourceText.addEventListener("input", () => {
     persistState();
@@ -942,11 +1163,55 @@ function wireEvents() {
   // 快捷短语库功能
   initPhrasesManagement();
 
-  // 剪贴板监听和朗读功能
   initFeatures();
 
   // 图片OCR功能
   initImageOCR();
+
+  // AI 精准识别 Key 配置
+  initAiOcrSettings();
+}
+
+// AI 精准识别 Key 配置（设置页）
+function initAiOcrSettings() {
+  const input = document.getElementById("zhipuKeyInput");
+  const saveBtn = document.getElementById("saveZhipuKeyBtn");
+  const statusEl = document.getElementById("zhipuKeyStatus");
+  if (!input || !saveBtn || !statusEl) return;
+
+  const refreshStatus = async () => {
+    try {
+      // 与后端实际解析逻辑一致（env → userData → 项目根 key 文件）
+      const r = await fetch("/api/ocr/status").then((x) => x.json());
+      const configured = !!r.configured;
+      statusEl.textContent = configured
+        ? `✅ AI 精准识别已配置（${r.model || "glm-4v-flash"}）`
+        : "⚠️ 未配置 Key，OCR 将使用本地识别（精度较低）";
+    } catch {
+      statusEl.textContent = "⚠️ 无法读取 Key 状态";
+    }
+  };
+
+  saveBtn.addEventListener("click", async () => {
+    const key = input.value.trim();
+    if (!key) {
+      statusEl.textContent = "请先粘贴智谱 API Key";
+      return;
+    }
+    if (window.electronAPI && window.electronAPI.saveZhipuKey) {
+      const r = await window.electronAPI.saveZhipuKey(key);
+      if (r.success) {
+        statusEl.textContent = "✅ Key 已保存";
+        input.value = "";
+      } else {
+        statusEl.textContent = "❌ 保存失败: " + (r.message || "");
+      }
+    } else {
+      statusEl.textContent = "⚠️ Web 版请把 Key 放到项目根目录 zhipu-key.txt";
+    }
+  });
+
+  refreshStatus();
 }
 
 // 图片OCR功能
@@ -1049,36 +1314,26 @@ function initImageOCR() {
   }
 
   async function recognizeImage(file) {
-    // 使用与截图翻译一致的 Tesseract v7 API
-    const { createWorker } = window.Tesseract || {};
-
-    if (!createWorker) {
-      throw new Error('OCR 功能未加载，请刷新页面重试');
-    }
-
-    const worker = await createWorker('chi_sim+eng', 1, {
-      logger: (m) => {
-        if (m.status === 'recognizing text') {
-          const percent = Math.round(m.progress * 100);
-          const progressText = document.querySelector('.progress-text');
-          if (progressText) {
-            progressText.textContent = `识别中... ${percent}%`;
-          }
-        }
-      }
+    // 统一走 AI 精准识别（失败自动回退本地 Tesseract）
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("图片读取失败"));
+      reader.readAsDataURL(file);
     });
 
-    const { data: { text } } = await worker.recognize(file);
-    await worker.terminate();
+    const progressText = document.querySelector('.progress-text');
+    if (progressText) {
+      progressText.textContent = "AI 精准识别中...";
+    }
 
+    const { text } = await ocrImage(dataUrl);
     return text;
   }
 }
 
-// 剪贴板监听和朗读功能
 function initFeatures() {
   const clipboardMonitor = document.getElementById("clipboardMonitor");
-  const autoSpeak = document.getElementById("autoSpeak");
   const autoTranslate = document.getElementById("autoTranslate");
 
   if (autoTranslate) {
@@ -1109,14 +1364,6 @@ function initFeatures() {
     }
   }
 
-  if (autoSpeak) {
-    autoSpeak.checked = autoSpeakEnabled;
-    autoSpeak.addEventListener("change", (e) => {
-      autoSpeakEnabled = e.target.checked;
-      localStorage.setItem("autoSpeak", autoSpeakEnabled);
-      setStatus(autoSpeakEnabled ? "自动朗读已启用" : "自动朗读已关闭", "success");
-    });
-  }
 }
 
 function stopClipboardMonitor() {
@@ -1153,17 +1400,6 @@ function startClipboardMonitor() {
   }, 2000);
 }
 
-function speakText(text) {
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'zh-CN';
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    window.speechSynthesis.speak(utterance);
-  }
-}
-
 // 文档翻译相关
 let currentFile = null;
 
@@ -1175,7 +1411,6 @@ let availableTags = JSON.parse(localStorage.getItem("availableTags") || '["工�
 
 // 功能配置
 let clipboardMonitorEnabled = localStorage.getItem("clipboardMonitor") === "true";
-let autoSpeakEnabled = localStorage.getItem("autoSpeak") === "true";
 let autoTranslateEnabled = localStorage.getItem("autoTranslate") === "true";
 let lastClipboardText = "";
 let clipboardMonitorTimer = null;

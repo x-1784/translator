@@ -1,5 +1,6 @@
 ﻿const electron = require("electron");
 const path = require("node:path");
+const fs = require("node:fs");
 
 // 延迟解构，确保在 Electron 环境中才访问
 let app, BrowserWindow, Menu, Tray, nativeImage, dialog, ipcMain;
@@ -527,12 +528,39 @@ function registerIpcHandlers() {
     captureScreenshot();
     return { success: true };
   });
+
+  // AI 精准识别：保存/查询智谱 API Key（写入 userData，避免打进 asar）
+  ipcMain.handle("save-zhipu-key", async (event, key) => {
+    const file = path.join(app.getPath("userData"), "zhipu-key.txt");
+    try {
+      await fs.promises.mkdir(path.dirname(file), { recursive: true });
+      await fs.promises.writeFile(file, String(key || "").trim(), "utf8");
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  });
+
+  ipcMain.handle("get-zhipu-key-status", async () => {
+    const file = path.join(app.getPath("userData"), "zhipu-key.txt");
+    try {
+      const content = await fs.promises.readFile(file, "utf8").catch(() => "");
+      return { configured: !!String(content || "").trim() };
+    } catch {
+      return { configured: false };
+    }
+  });
 }
 
 app.whenReady().then(async () => {
   // 缓存写入 userData，避免打包后 asar 只读导致失败
   if (!process.env.TRANSLATION_CACHE_DIR) {
     process.env.TRANSLATION_CACHE_DIR = path.join(app.getPath("userData"), "translation-cache");
+  }
+
+  // AI OCR 的智谱 Key 文件指向 userData（打包后 asar 只读，Key 不能写在应用目录）
+  if (!process.env.ZHIPU_KEY_FILE) {
+    process.env.ZHIPU_KEY_FILE = path.join(app.getPath("userData"), "zhipu-key.txt");
   }
 
   try {
